@@ -7,7 +7,7 @@
 
 // ── HLSL shaders ──────────────────────────────────────────────────────────────
 static const char* TERRAIN_HLSL = R"HLSL(
-row_major cbuffer FrameConstants : register(b0) {
+cbuffer FrameConstants : register(b0) {
     float4x4 viewProj;
     float4   camPos;
     float4   lightDir;
@@ -38,7 +38,7 @@ float4 PSMain(VOut v) : SV_TARGET {
 )HLSL";
 
 static const char* CREATURE_HLSL = R"HLSL(
-row_major cbuffer FrameConstants : register(b0) {
+cbuffer FrameConstants : register(b0) {
     float4x4 viewProj;
     float4   camPos;
     float4   lightDir;

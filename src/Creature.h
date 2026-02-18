@@ -1,6 +1,7 @@
 #pragma once
 #include "Genome.h"
 #include "Needs.h"
+#include "Math.h"
 #include <cstdint>
 #include <vector>
 
@@ -20,19 +21,6 @@ enum class BehaviorState {
     Fleeing,
     Hunting,
     Mating,     // gestation in progress
-};
-
-// ── 3D position / velocity (Y = up) ─────────────────────────────────────────
-struct Vec3 {
-    float x = 0, y = 0, z = 0;
-    Vec3 operator+(const Vec3& o) const { return {x+o.x, y+o.y, z+o.z}; }
-    Vec3 operator-(const Vec3& o) const { return {x-o.x, y-o.y, z-o.z}; }
-    Vec3 operator*(float s)       const { return {x*s,   y*s,   z*s  }; }
-    float dot(const Vec3& o)      const { return x*o.x + y*o.y + z*o.z; }
-    float len2()                  const { return x*x + y*y + z*z; }
-    float len()                   const { return std::sqrt(len2()); }
-    Vec3  normalised()            const { float l=len(); return l>1e-6f?(*this)*(1.f/l):Vec3{}; }
-    Vec3& operator+=(const Vec3& o){ x+=o.x; y+=o.y; z+=o.z; return *this; }
 };
 
 inline float dist(const Vec3& a, const Vec3& b) { return (a - b).len(); }

@@ -1,5 +1,5 @@
 #pragma once
-#include "genome.h"
+#include "Genome.h"
 #include <array>
 #include <algorithm>
 
@@ -29,14 +29,14 @@ inline const char* driveName(Drive d) {
 }
 
 // ── Needs state ───────────────────────────────────────────────────────────────
-struct needs {
+struct Needs {
     // level ∈ [0,1]: 0 = fully satisfied, 1 = critical
     std::array<float, DRIVE_COUNT> level{};
 
     // Crave rates: how fast each need rises per second
     std::array<float, DRIVE_COUNT> craveRate{};
 
-    void initFromGenome(const genome& g) {
+    void initFromGenome(const Genome& g) {
         craveRate[(int)Drive::Hunger] = g.hungerRate();
         craveRate[(int)Drive::Thirst] = g.thirstRate();
         craveRate[(int)Drive::Sleep]  = g.sleepRate();
@@ -45,7 +45,7 @@ struct needs {
         craveRate[(int)Drive::Social] = g.socialRate();
 
         // Start creatures at moderate need levels (not freshly born and full)
-        rng& rng = globalRNG();
+        RNG& rng = globalRNG();
         for (int i = 0; i < DRIVE_COUNT; i++)
             level[i] = (i == (int)Drive::Fear) ? 0.f : rng.range(0.1f, 0.5f);
     }

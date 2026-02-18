@@ -9,7 +9,7 @@ set(SOURCES
     src/main.cpp
         src/world.cpp
         src/renderer.cpp
-        src/sim_ui.cpp
+        src/simUI.cpp
 
     # ImGui – place the imgui/ folder at the project root
     imgui/imgui.cpp

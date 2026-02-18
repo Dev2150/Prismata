@@ -1,11 +1,11 @@
 #pragma once
-#include "genome.h"
-#include "needs.h"
+#include "Genome.h"
+#include "Needs.h"
 #include <cstdint>
 #include <vector>
 
 // ── Forward declarations ──────────────────────────────────────────────────────
-struct world;
+struct World;
 
 using EntityID = uint32_t;
 constexpr EntityID INVALID_ID = 0;
@@ -38,7 +38,7 @@ struct Vec3 {
 inline float dist(const Vec3& a, const Vec3& b) { return (a - b).len(); }
 
 // ── Creature ──────────────────────────────────────────────────────────────────
-struct creature {
+struct Creature {
     // Identity
     EntityID  id         = INVALID_ID;
     EntityID  parentA    = INVALID_ID;
@@ -52,8 +52,8 @@ struct creature {
     float yaw     = 0.f;  // heading in radians (XZ plane)
 
     // Biological state
-    genome  genome;
-    needs   needs;
+    Genome  genome;
+    Needs   needs;
     float   energy      = 100.f;   // current energy
     float   maxEnergy   = 150.f;   // cap
     float   age         = 0.f;     // seconds
@@ -90,7 +90,7 @@ struct creature {
     }
 
     // Returns joules consumed this frame
-    float tick(float dt, world& world);
+    float tick(float dt, World& world);
 
     // ── Physics / steering ───────────────────────────────────────────────────
 

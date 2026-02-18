@@ -1,4 +1,4 @@
-#include "world.h"
+#include "World.h"
 #include <cmath>
 #include <algorithm>
 #include <cassert>
@@ -14,7 +14,7 @@ static int P[512];
 static bool perlinInit = false;
 
 void initPerlin(uint64_t seed) {
-    rng rng(seed);
+    RNG rng(seed);
     std::vector<int> tmp(256);
     std::iota(tmp.begin(), tmp.end(), 0);
     for (int i = 255; i > 0; i--) {
@@ -63,7 +63,7 @@ float octaveNoise(float x, float z, int octaves = 6, float persistence = 0.5f, f
 }   // anonymous namespace
 
 // ── World generation ──────────────────────────────────────────────────────────
-void world::generate(uint64_t s, int cx, int cz) {
+void World::generate(uint64_t s, int cx, int cz) {
     seed    = s;
     worldCX = cx;
     worldCZ = cz;
@@ -111,7 +111,7 @@ void world::generate(uint64_t s, int cx, int cz) {
     }
 
     // Spawn initial plants
-    rng rng(seed + 1);
+    RNG rng(seed + 1);
     int wGX = worldCX * CHUNK_SIZE;
     int wGZ = worldCZ * CHUNK_SIZE;
     for (int i = 0; i < wGX * wGZ / 8; i++) {
@@ -127,7 +127,7 @@ void world::generate(uint64_t s, int cx, int cz) {
             float cx2 = rng.range(2.f, (float)wGX - 2.f);
             float cz2 = rng.range(2.f, (float)wGZ - 2.f);
             Vec3 sp   = snapToSurface(cx2, cz2);
-            genome g  = herb ? genome::randomHerbivore(rng) : genome::randomCarnivore(rng);
+            Genome g  = herb ? Genome::randomHerbivore(rng) : Genome::randomCarnivore(rng);
             spawnCreature(g, sp);
         }
     };
@@ -135,7 +135,7 @@ void world::generate(uint64_t s, int cx, int cz) {
     spawnN(20, false);
 }
 
-void world::reset() {
+void World::reset() {
     creatures.clear();
     idToIndex.clear();
     plants.clear();
@@ -147,24 +147,24 @@ void world::reset() {
 }
 
 // ── Terrain helpers ───────────────────────────────────────────────────────────
-Chunk* world::chunkAt(int cx, int cz) {
+Chunk* World::chunkAt(int cx, int cz) {
     if (cx < 0 || cz < 0 || cx >= worldCX || cz >= worldCZ) return nullptr;
     return &chunks[cz * worldCX + cx];
 }
 
-const Chunk* world::chunkAt(int cx, int cz) const {
+const Chunk* World::chunkAt(int cx, int cz) const {
     if (cx < 0 || cz < 0 || cx >= worldCX || cz >= worldCZ) return nullptr;
     return &chunks[cz * worldCX + cx];
 }
 
-VoxelColumn& world::columnAt(int gx, int gz) {
+VoxelColumn& World::columnAt(int gx, int gz) {
     int cx = gx / CHUNK_SIZE, lx = gx % CHUNK_SIZE;
     int cz = gz / CHUNK_SIZE, lz = gz % CHUNK_SIZE;
     return chunks[cz * worldCX + cx].cells[lz][lx];
 }
 
 // Bilinear interpolation of height
-float world::heightAt(float x, float z) const {
+float World::heightAt(float x, float z) const {
     int x0 = (int)std::floor(x), z0 = (int)std::floor(z);
     float fx = x - x0, fz = z - z0;
 
@@ -186,7 +186,7 @@ float world::heightAt(float x, float z) const {
          + (h01 * (1-fx) + h11 * fx) *    fz;
 }
 
-float world::slopeAt(float x, float z) const {
+float World::slopeAt(float x, float z) const {
     // Finite difference gradient
     const float d = 0.5f;
     float dhdx = (heightAt(x+d, z) - heightAt(x-d, z)) / (2*d);
@@ -195,7 +195,7 @@ float world::slopeAt(float x, float z) const {
     return std::sin(std::atan(gradMag));   // sin of angle from horizontal
 }
 
-bool world::isWater(float x, float z) const {
+bool World::isWater(float x, float z) const {
     int gx = (int)x, gz = (int)z;
     gx = std::clamp(gx, 0, worldCX * CHUNK_SIZE - 1);
     gz = std::clamp(gz, 0, worldCZ * CHUNK_SIZE - 1);
@@ -205,7 +205,7 @@ bool world::isWater(float x, float z) const {
     return ch && ch->cells[lz][lx].material == 3;
 }
 
-bool world::findWater(const Vec3& from, float radius, Vec3& outPos) const {
+bool World::findWater(const Vec3& from, float radius, Vec3& outPos) const {
     // Grid scan over water tiles within radius
     int r = (int)std::ceil(radius);
     int gx0 = (int)from.x - r, gz0 = (int)from.z - r;
@@ -227,15 +227,15 @@ bool world::findWater(const Vec3& from, float radius, Vec3& outPos) const {
     return found;
 }
 
-Vec3 world::snapToSurface(float x, float z) const {
+Vec3 World::snapToSurface(float x, float z) const {
     return {x, heightAt(x, z), z};
 }
 
 // ── Entity management ─────────────────────────────────────────────────────────
-creature& world::spawnCreature(const genome& g, const Vec3& pos,
+Creature& World::spawnCreature(const Genome& g, const Vec3& pos,
                                EntityID pA, EntityID pB, uint32_t gen) {
     creatures.emplace_back();
-    creature& c  = creatures.back();
+    Creature& c  = creatures.back();
     c.id         = nextID++;
     c.parentA    = pA;
     c.parentB    = pB;
@@ -248,7 +248,7 @@ creature& world::spawnCreature(const genome& g, const Vec3& pos,
     return c;
 }
 
-Plant& world::spawnPlant(const Vec3& pos, uint8_t type) {
+Plant& World::spawnPlant(const Vec3& pos, uint8_t type) {
     plants.emplace_back();
     Plant& p  = plants.back();
     p.pos      = pos;
@@ -257,10 +257,10 @@ Plant& world::spawnPlant(const Vec3& pos, uint8_t type) {
     return p;
 }
 
-void world::removeDeadCreatures() {
+void World::removeDeadCreatures() {
     creatures.erase(
         std::remove_if(creatures.begin(), creatures.end(),
-                       [](const creature& c){ return !c.alive; }),
+                       [](const Creature& c){ return !c.alive; }),
         creatures.end());
     // Rebuild index
     idToIndex.clear();
@@ -269,7 +269,7 @@ void world::removeDeadCreatures() {
 }
 
 // ── Spatial hash ─────────────────────────────────────────────────────────────
-void world::rebuildSpatialHash() {
+void World::rebuildSpatialHash() {
     spatialHash.cells.clear();
     for (const auto& c : creatures) {
         if (!c.alive) continue;
@@ -279,7 +279,7 @@ void world::rebuildSpatialHash() {
     }
 }
 
-std::vector<EntityID> world::queryRadius(const Vec3& center, float radius) const {
+std::vector<EntityID> World::queryRadius(const Vec3& center, float radius) const {
     std::vector<EntityID> result;
     int r = (int)std::ceil(radius / spatialHash.cellSize) + 1;
     int cx0 = (int)(center.x / spatialHash.cellSize);
@@ -291,7 +291,7 @@ std::vector<EntityID> world::queryRadius(const Vec3& center, float radius) const
             for (EntityID id : it->second) {
                 auto ii = idToIndex.find(id);
                 if (ii == idToIndex.end()) continue;
-                const creature& c2 = creatures[ii->second];
+                const Creature& c2 = creatures[ii->second];
                 if (dist(c2.pos, center) <= radius)
                     result.push_back(id);
             }
@@ -301,7 +301,7 @@ std::vector<EntityID> world::queryRadius(const Vec3& center, float radius) const
 }
 
 // ── Species registry ──────────────────────────────────────────────────────────
-uint32_t world::classifySpecies(const genome& g) {
+uint32_t World::classifySpecies(const Genome& g) {
     float bestDist = 1e9f;
     uint32_t bestID = 0;
 
@@ -323,8 +323,8 @@ uint32_t world::classifySpecies(const genome& g) {
         int   hi = (int)h;
         float f  = h - hi;
         float p  = 0.3f, q = 0.3f + 0.7f * (1-f), tv = 0.3f + 0.7f * f;
-        float rgb[3][3] = {
-            {1,tv,p},{q,1,p},{p,1,tv}, {p,q,1},{tv,p,1},{1,p,q}
+        float rgb[6][3] = {
+            {1,tv,p},{q,1,p},{p,1,tv},{p,q,1},{tv,p,1},{1,p,q}
         };
         sp.color[0] = rgb[hi%6][0];
         sp.color[1] = rgb[hi%6][1];
@@ -344,11 +344,11 @@ uint32_t world::classifySpecies(const genome& g) {
     return bestID;
 }
 
-void world::updateSpeciesCentroids() {
+void World::updateSpeciesCentroids() {
     // Zero counts
     for (auto& sp : species) {
         sp.count = 0;
-        sp.centroid = genome{};
+        sp.centroid = Genome{};
     }
     // Accumulate
     for (const auto& c : creatures) {
@@ -368,14 +368,14 @@ void world::updateSpeciesCentroids() {
     }
 }
 
-const SpeciesInfo* world::getSpecies(uint32_t id) const {
+const SpeciesInfo* World::getSpecies(uint32_t id) const {
     for (const auto& sp : species)
         if (sp.id == id) return &sp;
     return nullptr;
 }
 
 // ── Perception ────────────────────────────────────────────────────────────────
-void world::perceive(creature& c) {
+void World::perceive(Creature& c) {
     float range  = c.genome.visionRange();
     float fovRad = c.genome.visionFOV() * 3.14159f / 180.f;
 
@@ -391,7 +391,7 @@ void world::perceive(creature& c) {
         if (oid == c.id) continue;
         auto it = idToIndex.find(oid);
         if (it == idToIndex.end()) continue;
-        const creature& o = creatures[it->second];
+        const Creature& o = creatures[it->second];
         if (!o.alive) continue;
 
         // FOV check (simple dot product)
@@ -449,7 +449,7 @@ void world::perceive(creature& c) {
 }
 
 // ── Plant growth ──────────────────────────────────────────────────────────────
-void world::growPlants(float dt) {
+void World::growPlants(float dt) {
     // Regrow eaten plants
     for (auto& p : plants) {
         if (p.alive) continue;
@@ -467,7 +467,7 @@ void world::growPlants(float dt) {
     int cap = worldCX * worldCZ * CHUNK_SIZE / 4;
     if (alive < cap) {
         int toSpawn = (int)(cfg.plantGrowRate * dt) + (globalRNG().chance(cfg.plantGrowRate * dt - (int)(cfg.plantGrowRate * dt)) ? 1 : 0);
-        rng& rng = globalRNG();
+        RNG& rng = globalRNG();
         for (int i = 0; i < toSpawn; i++) {
             float px = rng.range(0.f, (float)(worldCX * CHUNK_SIZE));
             float pz = rng.range(0.f, (float)(worldCZ * CHUNK_SIZE));
@@ -484,7 +484,7 @@ void world::growPlants(float dt) {
 }
 
 // ── Creature tick ─────────────────────────────────────────────────────────────
-float creature::tick(float dt, world& world) {
+float Creature::tick(float dt, World& world) {
     if (!alive) return 0.f;
 
     age += dt;
@@ -505,7 +505,7 @@ float creature::tick(float dt, world& world) {
     case Drive::Fear:
         behavior = BehaviorState::Fleeing;
         if (world.idToIndex.count(nearestPredator)) {
-            const creature& pred = world.creatures[world.idToIndex.at(nearestPredator)];
+            const Creature& pred = world.creatures[world.idToIndex.at(nearestPredator)];
             steerAway(pred.pos, spd, dt);
         }
         break;
@@ -513,11 +513,11 @@ float creature::tick(float dt, world& world) {
     case Drive::Hunger:
         if (isCarnivore() && nearestPrey != INVALID_ID) {
             behavior = BehaviorState::Hunting;
-            const creature& prey = world.creatures[world.idToIndex.at(nearestPrey)];
+            const Creature& prey = world.creatures[world.idToIndex.at(nearestPrey)];
             steerToward(prey.pos, spd, dt);
             // Attack if adjacent
             if (nearestPreyDist < 1.2f) {
-                creature& prey2 = world.creatures[world.idToIndex.at(nearestPrey)];
+                Creature& prey2 = world.creatures[world.idToIndex.at(nearestPrey)];
                 float bite = 20.f * genome.carnEfficiency() * dt;
                 prey2.energy -= bite;
                 energy = std::min(maxEnergy, energy + bite * 0.7f);
@@ -569,7 +569,7 @@ float creature::tick(float dt, world& world) {
     case Drive::Libido:
         if (nearestMate != INVALID_ID) {
             behavior = BehaviorState::SeekMate;
-            const creature& mate = world.creatures[world.idToIndex.at(nearestMate)];
+            const Creature& mate = world.creatures[world.idToIndex.at(nearestMate)];
             steerToward(mate.pos, spd * 0.6f, dt);
         }
         break;
@@ -610,7 +610,7 @@ float creature::tick(float dt, world& world) {
 }
 
 // ── Reproduction ──────────────────────────────────────────────────────────────
-void world::handleReproduction(float dt) {
+void World::handleReproduction(float dt) {
     // Update gestation
     for (auto& c : creatures) {
         if (!c.alive || c.behavior != BehaviorState::Mating) continue;
@@ -619,12 +619,12 @@ void world::handleReproduction(float dt) {
             // Birth
             auto it = idToIndex.find(c.mateTarget);
             if (it == idToIndex.end()) { c.behavior = BehaviorState::Idle; continue; }
-            creature& mate = creatures[it->second];
+            Creature& mate = creatures[it->second];
             if (!mate.alive) { c.behavior = BehaviorState::Idle; continue; }
 
             int litter = c.genome.litterSize();
             for (int i = 0; i < litter; i++) {
-                genome child = genome::crossover(c.genome, mate.genome, globalRNG());
+                Genome child = Genome::crossover(c.genome, mate.genome, globalRNG());
                 child.mutate(globalRNG());
                 Vec3 birthPos = c.pos;
                 birthPos.x += globalRNG().range(-1.f, 1.f);
@@ -652,7 +652,7 @@ void world::handleReproduction(float dt) {
 
         auto it = idToIndex.find(c.nearestMate);
         if (it == idToIndex.end()) continue;
-        creature& mate = creatures[it->second];
+        Creature& mate = creatures[it->second];
         if (!mate.alive) continue;
         if (mate.behavior == BehaviorState::Mating) continue;
 
@@ -666,7 +666,7 @@ void world::handleReproduction(float dt) {
 }
 
 // ── Main tick ─────────────────────────────────────────────────────────────────
-void world::tick(float dt) {
+void World::tick(float dt) {
     if (cfg.paused) return;
     dt *= cfg.simSpeed;
 
@@ -695,12 +695,12 @@ void world::tick(float dt) {
 }
 
 // Genetic distance helper (used by World::handleReproduction)
-bool sameSpecies(const genome& a, const genome& b, float epsilon) {
+bool sameSpecies(const Genome& a, const Genome& b, float epsilon) {
     return a.distanceTo(b) < epsilon;
 }
 
 // ── Serialisation stubs ───────────────────────────────────────────────────────
-bool world::saveToFile(const char* path) const {
+bool World::saveToFile(const char* path) const {
     std::ofstream f(path, std::ios::binary);
     if (!f) return false;
     // TODO: use nlohmann/json or a binary format for full save
@@ -711,7 +711,7 @@ bool world::saveToFile(const char* path) const {
     return true;
 }
 
-bool world::loadFromFile(const char* path) {
+bool World::loadFromFile(const char* path) {
     std::ifstream f(path, std::ios::binary);
     if (!f) return false;
     f.read(reinterpret_cast<char*>(&simTime), sizeof(simTime));
@@ -720,7 +720,7 @@ bool world::loadFromFile(const char* path) {
     return true;
 }
 
-void world::exportCSV(const char* path) const {
+void World::exportCSV(const char* path) const {
     std::ofstream f(path);
     if (!f) return;
     f << "id,species,x,y,z,age,energy,speed,herbEff,carnEff\n";

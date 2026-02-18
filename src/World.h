@@ -1,5 +1,5 @@
 #pragma once
-#include "creature.h"
+#include "Creature.h"
 #include <vector>
 #include <unordered_map>
 #include <functional>
@@ -33,7 +33,7 @@ struct Plant {
 struct SpeciesInfo {
     uint32_t    id;
     std::string name;
-    genome      centroid;        // average genome of living members
+    Genome      centroid;        // average genome of living members
     int         count    = 0;
     int         allTime  = 0;    // total ever born
     float       color[3] = {};   // display colour
@@ -50,10 +50,10 @@ struct SimConfig {
 };
 
 // Free function used by World internals and available externally
-bool sameSpecies(const genome& a, const genome& b, float epsilon = 0.15f);
+bool sameSpecies(const Genome& a, const Genome& b, float epsilon = 0.15f);
 
 // ── World ─────────────────────────────────────────────────────────────────────
-struct world {
+struct World {
     // ── Config ────────────────────────────────────────────────────────────────
     SimConfig cfg;
     uint64_t  seed     = 0;
@@ -75,15 +75,18 @@ struct world {
     // Nearest water position within radius
     bool  findWater(const Vec3& from, float radius, Vec3& outPos) const;
 
+    // Public chunk accessor (for Renderer)
+    const Chunk* chunkAtPublic(int cx, int cz) const { return chunkAt(cx, cz); }
+
     // Snap a world position to the terrain surface
     Vec3  snapToSurface(float x, float z) const;
 
     // ── Creatures ─────────────────────────────────────────────────────────────
-    std::vector<creature>               creatures;
+    std::vector<Creature>               creatures;
     std::unordered_map<EntityID, size_t> idToIndex;   // O(1) lookup
     EntityID nextID = 1;
 
-    creature& spawnCreature(const genome& g, const Vec3& pos,
+    Creature& spawnCreature(const Genome& g, const Vec3& pos,
                             EntityID parentA = INVALID_ID,
                             EntityID parentB = INVALID_ID,
                             uint32_t generation = 0);
@@ -99,7 +102,7 @@ struct world {
     uint32_t nextSpeciesID = 1;
 
     // Assign or find species for a genome; updates centroid
-    uint32_t classifySpecies(const genome& g);
+    uint32_t classifySpecies(const Genome& g);
     void     updateSpeciesCentroids();
     const SpeciesInfo* getSpecies(uint32_t id) const;
 
@@ -120,7 +123,7 @@ private:
     void  growPlants(float dt);
     void  tickCreatures(float dt);
     void  handleReproduction(float dt);
-    void  perceive(creature& c);      // update perception cache
+    void  perceive(Creature& c);      // update perception cache
 
     Chunk*       chunkAt(int cx, int cz);
     const Chunk* chunkAt(int cx, int cz) const;

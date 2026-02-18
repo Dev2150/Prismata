@@ -1,5 +1,5 @@
 #pragma once
-#include "rng.h"
+#include "RNG.h"
 #include <array>
 #include <cmath>
 #include <algorithm>
@@ -47,7 +47,7 @@ enum GeneIdx : int {
 };
 
 // ── Genome struct ────────────────────────────────────────────────────────────
-struct genome {
+struct Genome {
     std::array<float, GENOME_SIZE> raw{};
 
     // ── Accessors (gene → biological value) ──────────────────────────────────
@@ -82,14 +82,14 @@ struct genome {
     // ── Genetics ─────────────────────────────────────────────────────────────
 
     // Uniform crossover: each gene is drawn from one parent at random
-    static genome crossover(const genome& a, const genome& b, rng& rng) {
-        genome child;
+    static Genome crossover(const Genome& a, const Genome& b, RNG& rng) {
+        Genome child;
         for (int i = 0; i < GENOME_SIZE; i++)
             child.raw[i] = rng.chance(0.5f) ? a.raw[i] : b.raw[i];
         return child;
     }
 
-    void mutate(rng& rng) {
+    void mutate(RNG& rng) {
         float rate = mutationRate();
         float std  = mutationStd();
         for (int i = 0; i < GENOME_SIZE; i++) {
@@ -101,20 +101,20 @@ struct genome {
     }
 
     // Normalised RMS distance ∈ [0, 1]
-    float distanceTo(const genome& o) const {
+    float distanceTo(const Genome& o) const {
         float sum = 0;
         for (int i = 0; i < GENOME_SIZE; i++) {
             float d = raw[i] - o.raw[i];
             sum += d * d;
         }
-        return std::sqrt(sum / GENOME_SIZE);
+        return std::sqrt(sum / (float)GENOME_SIZE);
     }
 
     // ── Construction helpers ──────────────────────────────────────────────────
 
     // Randomise all genes
-    static genome randomHerbivore(rng& rng) {
-        genome g;
+    static Genome randomHerbivore(RNG& rng) {
+        Genome g;
         for (auto& v : g.raw) v = rng.uniform();
         // Bias toward herbivory
         g.raw[GENE_HERB_EFFICIENCY] = rng.range(0.6f, 1.0f);
@@ -125,8 +125,8 @@ struct genome {
         return g;
     }
 
-    static genome randomCarnivore(rng& rng) {
-        genome g;
+    static Genome randomCarnivore(RNG& rng) {
+        Genome g;
         for (auto& v : g.raw) v = rng.uniform();
         g.raw[GENE_HERB_EFFICIENCY] = rng.range(0.0f, 0.3f);
         g.raw[GENE_CARN_EFFICIENCY] = rng.range(0.6f, 1.0f);

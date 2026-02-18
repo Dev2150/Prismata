@@ -1,5 +1,5 @@
 #pragma once
-#include "world.h"
+#include "World.h"
 #include <vector>
 #include <deque>
 #include <algorithm>
@@ -20,7 +20,7 @@ struct DataSample {
 };
 
 // ── Ring buffer of N seconds of history at 1-Hz resolution ───────────────────
-struct data_recorder {
+struct DataRecorder {
     static constexpr int MAX_SAMPLES = 3600;   // 1 hour at 1 Hz
 
     std::deque<DataSample> history;
@@ -33,7 +33,7 @@ struct data_recorder {
     float sampleTimer = 0.f;
     float sampleInterval = 1.f;   // seconds between samples
 
-    void tick(float dt, const world& world) {
+    void tick(float dt, const World& world) {
         sampleTimer += dt;
         if (sampleTimer < sampleInterval) return;
         sampleTimer = 0.f;
@@ -97,7 +97,7 @@ struct data_recorder {
     int size() const { return (int)history.size(); }
 
     // Gene histogram: collect values of one gene across population
-    void geneHistogram(const world& world, GeneIdx gene,
+    void geneHistogram(const World& world, GeneIdx gene,
                        int bins, std::vector<float>& outX,
                        std::vector<float>& outY) const {
         outX.assign(bins, 0.f);

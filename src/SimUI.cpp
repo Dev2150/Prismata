@@ -1,4 +1,4 @@
-#include "sim_ui.h"
+#include "SimUI.h"
 #include "imgui.h"
 #include "implot.h"
 #include <cstdio>
@@ -15,7 +15,7 @@ static ImVec4 hueColor(float hue, float alpha = 1.f) {
 }
 
 // ── Top-level draw ────────────────────────────────────────────────────────────
-void sim_ui::draw(world& world, data_recorder& rec, renderer& rend) {
+void SimUI::draw(World& world, DataRecorder& rec, Renderer& rend) {
     drawMainMenuBar(world, rec, rend);
     drawSimControls(world, rend);
     drawPopStats(world, rec);
@@ -31,7 +31,7 @@ void sim_ui::draw(world& world, data_recorder& rec, renderer& rend) {
 }
 
 // ── Menu bar ──────────────────────────────────────────────────────────────────
-void sim_ui::drawMainMenuBar(world& world, data_recorder& rec, renderer& rend) {
+void SimUI::drawMainMenuBar(World& world, DataRecorder& rec, Renderer& rend) {
     if (!ImGui::BeginMainMenuBar()) return;
 
     if (ImGui::BeginMenu("File")) {
@@ -68,7 +68,7 @@ void sim_ui::drawMainMenuBar(world& world, data_recorder& rec, renderer& rend) {
 }
 
 // ── Sim controls ──────────────────────────────────────────────────────────────
-void sim_ui::drawSimControls(world& world, renderer& rend) {
+void SimUI::drawSimControls(World& world, Renderer& rend) {
     ImGui::Begin("Simulation Controls");
 
     // Pause / play buttons
@@ -101,7 +101,7 @@ void sim_ui::drawSimControls(world& world, renderer& rend) {
         for (int i = 0; i < nHerb; i++) {
             float px = globalRNG().range(2.f, (float)(world.worldCX * CHUNK_SIZE - 2));
             float pz = globalRNG().range(2.f, (float)(world.worldCZ * CHUNK_SIZE - 2));
-            world.spawnCreature(genome::randomHerbivore(globalRNG()),
+            world.spawnCreature(Genome::randomHerbivore(globalRNG()),
                                 world.snapToSurface(px, pz));
         }
     }
@@ -110,7 +110,7 @@ void sim_ui::drawSimControls(world& world, renderer& rend) {
         for (int i = 0; i < nCarn; i++) {
             float px = globalRNG().range(2.f, (float)(world.worldCX * CHUNK_SIZE - 2));
             float pz = globalRNG().range(2.f, (float)(world.worldCZ * CHUNK_SIZE - 2));
-            world.spawnCreature(genome::randomCarnivore(globalRNG()),
+            world.spawnCreature(Genome::randomCarnivore(globalRNG()),
                                 world.snapToSurface(px, pz));
         }
     }
@@ -119,7 +119,7 @@ void sim_ui::drawSimControls(world& world, renderer& rend) {
 }
 
 // ── Population stats ──────────────────────────────────────────────────────────
-void sim_ui::drawPopStats(const world& world, const data_recorder& rec) {
+void SimUI::drawPopStats(const World& world, const DataRecorder& rec) {
     ImGui::Begin("Population Statistics");
     int n = rec.size();
 
@@ -142,7 +142,7 @@ void sim_ui::drawPopStats(const world& world, const data_recorder& rec) {
 }
 
 // ── Entity inspector ──────────────────────────────────────────────────────────
-void sim_ui::drawEntityInspector(const world& world) {
+void SimUI::drawEntityInspector(const World& world) {
     ImGui::Begin("Entity Inspector");
 
     if (selectedID == INVALID_ID) {
@@ -153,7 +153,7 @@ void sim_ui::drawEntityInspector(const world& world) {
             ImGui::TextDisabled("Entity no longer exists.");
             selectedID = INVALID_ID;
         } else {
-            const creature& c = world.creatures[it->second];
+            const Creature& c = world.creatures[it->second];
             const SpeciesInfo* sp = world.getSpecies(c.speciesID);
 
             ImGui::Text("ID: %u  Gen: %u  Species: %s",
@@ -204,7 +204,7 @@ void sim_ui::drawEntityInspector(const world& world) {
 }
 
 // ── Species panel ─────────────────────────────────────────────────────────────
-void sim_ui::drawSpeciesPanel(const world& world) {
+void SimUI::drawSpeciesPanel(const World& world) {
     ImGui::Begin("Species");
 
     // Count active
@@ -246,7 +246,7 @@ void sim_ui::drawSpeciesPanel(const world& world) {
 }
 
 // ── Gene charts ───────────────────────────────────────────────────────────────
-void sim_ui::drawGeneCharts(const world& world, const data_recorder& rec) {
+void SimUI::drawGeneCharts(const World& world, const DataRecorder& rec) {
     ImGui::Begin("Gene Evolution");
     int n = rec.size();
 
@@ -271,7 +271,6 @@ void sim_ui::drawGeneCharts(const world& world, const data_recorder& rec) {
     rec.geneHistogram(world, (GeneIdx)chartGeneIdx, 20, histX, histY);
     if (!histX.empty() && ImPlot::BeginPlot("##GeneHist", ImVec2(-1, 160))) {
         ImPlot::SetupAxes("Gene value [0,1]", "Count");
-        ImPlot::SetNextFillStyle(IMPLOT_AUTO_COL, 0.7f);
         ImPlot::PlotBars("##bars", histX.data(), histY.data(),
                          (int)histX.size(), 0.04f);
         ImPlot::EndPlot();
@@ -281,7 +280,7 @@ void sim_ui::drawGeneCharts(const world& world, const data_recorder& rec) {
 }
 
 // ── Player panel ──────────────────────────────────────────────────────────────
-void sim_ui::drawPlayerPanel(world& world, renderer& rend) {
+void SimUI::drawPlayerPanel(World& world, Renderer& rend) {
     ImGui::Begin("Player Mode");
 
     if (rend.playerID == INVALID_ID) {
@@ -299,7 +298,7 @@ void sim_ui::drawPlayerPanel(world& world, renderer& rend) {
             rend.playerID     = INVALID_ID;
             rend.showFogOfWar = false;
         } else {
-            const creature& c = world.creatures[it->second];
+            const Creature& c = world.creatures[it->second];
             ImGui::Text("Controlling: #%u", rend.playerID);
             ImGui::Text("Energy: %.1f   Age: %.1fs", c.energy, c.age);
             ImGui::Text("Active Drive: %s",

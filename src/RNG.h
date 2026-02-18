@@ -3,10 +3,10 @@
 #include <cmath>
 
 // xoshiro256** – fast, high-quality 64-bit PRNG
-struct rng {
+struct RNG {
     uint64_t s[4];
 
-    explicit rng(uint64_t seed = 12345) {
+    explicit RNG(uint64_t seed = 12345) {
         // SplitMix64 to initialise state from a single seed
         auto sm = [](uint64_t& x) -> uint64_t {
             x += 0x9e3779b97f4a7c15ULL;
@@ -55,7 +55,7 @@ private:
 
 // One global RNG – seed from time at startup
 #include <ctime>
-inline rng& globalRNG() {
-    static rng rng(static_cast<uint64_t>(std::time(nullptr)));
+inline RNG& globalRNG() {
+    static RNG rng(static_cast<uint64_t>(std::time(nullptr)));
     return rng;
 }

@@ -460,8 +460,8 @@ int main(int arg, char **argv)
    #endif
 
    #ifndef STBTT_cos
-   #include <math.h>
-   #define STBTT_cos(x)       cos(x)
+   #include <Math.h>
+#define STBTT_cos(x)       cos(x)
    #define STBTT_acos(x)      acos(x)
    #endif
 

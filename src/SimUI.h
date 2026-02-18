@@ -1,10 +1,10 @@
 // SimUI.h
 #pragma once
-#include "world.h"
-#include "data_recorder.h"
-#include "renderer.h"
+#include "World.h"
+#include "DataRecorder.h"
+#include "Renderer.h"
 
-struct sim_ui {
+struct SimUI {
     // ── State ──────────────────────────────────────────────────────────────────
     EntityID   selectedID      = INVALID_ID;
     int        chartGeneIdx    = GENE_MAX_SPEED;
@@ -16,14 +16,14 @@ struct sim_ui {
     std::vector<float> histX, histY;
 
     // ── Entry point ───────────────────────────────────────────────────────────
-    void draw(world& world, data_recorder& rec, renderer& rend);
+    void draw(World& world, DataRecorder& rec, Renderer& rend);
 
 private:
-    void drawMainMenuBar(world& world, data_recorder& rec, renderer& rend);
-    void drawSimControls(world& world, renderer& rend);
-    void drawPopStats(const world& world, const data_recorder& rec);
-    void drawEntityInspector(const world& world);
-    void drawSpeciesPanel(const world& world);
-    void drawGeneCharts(const world& world, const data_recorder& rec);
-    void drawPlayerPanel(world& world, renderer& rend);
+    void drawMainMenuBar(World& world, DataRecorder& rec, Renderer& rend);
+    void drawSimControls(World& world, Renderer& rend);
+    void drawPopStats(const World& world, const DataRecorder& rec);
+    void drawEntityInspector(const World& world);
+    void drawSpeciesPanel(const World& world);
+    void drawGeneCharts(const World& world, const DataRecorder& rec);
+    void drawPlayerPanel(World& world, Renderer& rend);
 };

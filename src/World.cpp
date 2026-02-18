@@ -5,6 +5,8 @@
 #include <fstream>
 #include <sstream>
 #include <numeric>
+#include <vector>
+#include <random> // For std::mt19937 and std::uniform_int_distribution
 
 // ── Perlin noise (single-header implementation) ───────────────────────────────
 namespace {
@@ -266,6 +268,30 @@ void World::removeDeadCreatures() {
     idToIndex.clear();
     for (size_t i = 0; i < creatures.size(); i++)
         idToIndex[creatures[i].id] = i;
+}
+
+EntityID World::findRandomLivingCreature() const
+{
+    // Collect all living creature IDs into a temporary list
+    std::vector<EntityID> livingCreatures;
+    for (const auto& creature : creatures) {
+        if (creature.alive) {
+            livingCreatures.push_back(creature.id);
+        }
+    }
+
+    // If no creatures are alive, return an invalid ID
+    if (livingCreatures.empty()) {
+        return INVALID_ID;
+    }
+
+    // Pick a random creature from the list
+    // Use a static random engine to avoid re-seeding it every time
+    static std::mt19937 rng(std::random_device{}());
+    std::uniform_int_distribution<size_t> dist(0, livingCreatures.size() - 1);
+
+    size_t randomIndex = dist(rng);
+    return livingCreatures[randomIndex];
 }
 
 // ── Spatial hash ─────────────────────────────────────────────────────────────

@@ -93,6 +93,8 @@ struct World {
 
     void removeDeadCreatures();
 
+    EntityID findRandomLivingCreature() const;
+
     // ── Plants ────────────────────────────────────────────────────────────────
     std::vector<Plant> plants;
     Plant& spawnPlant(const Vec3& pos, uint8_t type = 0);

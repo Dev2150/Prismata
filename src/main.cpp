@@ -260,7 +260,18 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
         g_ui.selectedID = bestID;
         return 0;
     }
-
+    case WM_CHAR: // better for single-press actions
+        if (wParam == 'p' || wParam == 'P') {
+            if (!ImGui::GetIO().WantCaptureKeyboard) {
+                // Find a random living creature and possess it
+                EntityID randomID = g_world.findRandomLivingCreature();
+                if (randomID != INVALID_ID) {
+                    g_renderer.playerID = randomID;
+                    g_ui.selectedID = randomID; // Also select it in the UI
+                }
+            }
+        }
+        return 0;
     case WM_SYSCOMMAND:
         if ((wParam & 0xfff0) == SC_KEYMENU) return 0;
         break;

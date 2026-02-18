@@ -9,6 +9,10 @@ struct Camera {
     float  yaw    = 0.f;    // radians
     float  pitch  = -0.6f;  // radians (negative = looking down)
     float  fovY   = 60.f;   // degrees
+    float  translation_speed = 120.f;
+    float  follow_dist    = 8.f;   // How far behind the creature
+    float  follow_height  = 4.f;   // How high above the creature
+    float  follow_speed   = 5.f;   // How quickly the camera snaps to position
 
     // Forward vector from yaw+pitch
     Float3 forward() const {
@@ -106,7 +110,7 @@ struct Renderer {
     void resize(int width, int height);
     void render(const World& world, float aspectRatio);
     void shutdown();
-    void tickCamera(float dt, bool playerMode);
+    void tickCamera(float dt, const World& world);
     void onMouseMove(int dx, int dy, bool rightDown);
     void onKey(int vk, bool down);
 

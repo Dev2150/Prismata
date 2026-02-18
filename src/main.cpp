@@ -125,7 +125,7 @@ int main(int, char**)
         lastTime = now;
         dt = std::min(dt, 0.05f);
 
-        g_renderer.tickCamera(dt, g_renderer.playerID != INVALID_ID);
+        g_renderer.tickCamera(dt, g_world);
         g_world.tick(dt);
         g_recorder.tick(dt, g_world);
 

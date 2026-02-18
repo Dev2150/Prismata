@@ -372,18 +372,57 @@ void Renderer::renderCreatures(const World& world) {
 }
 
 // ── Camera movement ───────────────────────────────────────────────────────────
-void Renderer::tickCamera(float dt, bool playerMode) {
-    if (playerMode) return;
-    float spd = 15.f * dt;
-    Float3 f = camera.forward();
-    // Right = cross(forward, up)
-    Float3 r = {f.z, 0.f, -f.x};  // simplified for y-up world
-    float rl = std::sqrt(r.x*r.x + r.z*r.z);
-    if (rl > 1e-6f) { r.x/=rl; r.z/=rl; }
+void Renderer::tickCamera(float dt, const World& world) {
+    // --- POSSESS (FOLLOW) MODE ---
+    if (playerID != INVALID_ID) {
+        auto it = world.idToIndex.find(playerID);
+        if (it == world.idToIndex.end() || !world.creatures[it->second].alive) {
+            // Creature died or disappeared, release control
+            playerID = INVALID_ID;
+            return;
+        }
 
-    camera.pos.x += (f.x * (moveKeys[0]-moveKeys[1]) + r.x * (moveKeys[3]-moveKeys[2])) * spd;
-    camera.pos.y += (moveKeys[4] - moveKeys[5]) * spd;
-    camera.pos.z += (f.z * (moveKeys[0]-moveKeys[1]) + r.z * (moveKeys[3]-moveKeys[2])) * spd;
+        const Creature& creature = world.creatures[it->second];
+
+        // Calculate target camera position (behind and above the creature)
+        float creatureForwardX = sin(creature.yaw);
+        float creatureForwardZ = cos(creature.yaw);
+
+        Float3 targetPos = {
+            creature.pos.x - creatureForwardX * camera.follow_dist,
+            creature.pos.y + camera.follow_dist,
+            creature.pos.z - creatureForwardZ * camera.follow_dist
+        };
+
+        // Smoothly move camera towards the target position (lerp)
+        float blend = 1.0f - exp(-dt * camera.follow_speed); // Frame-rate independent lerp
+        camera.pos.x += (targetPos.x - camera.pos.x) * blend;
+        camera.pos.y += (targetPos.y - camera.pos.y) * blend;
+        camera.pos.z += (targetPos.z - camera.pos.z) * blend;
+
+        // Update yaw and pitch to look at the creature
+        Float3 lookDir = {
+            creature.pos.x - camera.pos.x,
+            creature.pos.y - camera.pos.y,
+            creature.pos.z - camera.pos.z
+        };
+        lookDir = normalise3(lookDir.x, lookDir.y, lookDir.z);
+
+        camera.yaw = atan2(lookDir.x, lookDir.z);
+        camera.pitch = asin(lookDir.y);
+    }
+    // --- FREE-LOOK MODE ---
+    else {
+        float spd = camera.translation_speed * dt;
+        Float3 f = camera.forward();
+        Float3 r = {f.z, 0.f, -f.x}; // Right vector
+        float rl = std::sqrt(r.x*r.x + r.z*r.z);
+        if (rl > 1e-6f) { r.x/=rl; r.z/=rl; }
+
+        camera.pos.x += (f.x * (moveKeys[0]-moveKeys[1]) + r.x * (moveKeys[3]-moveKeys[2])) * spd;
+        camera.pos.y += (moveKeys[4] - moveKeys[5]) * spd;
+        camera.pos.z += (f.z * (moveKeys[0]-moveKeys[1]) + r.z * (moveKeys[3]-moveKeys[2])) * spd;
+    }
 }
 
 void Renderer::onMouseMove(int dx, int dy, bool rightDown) {
@@ -396,9 +435,9 @@ void Renderer::onMouseMove(int dx, int dy, bool rightDown) {
 void Renderer::onKey(int vk, bool down) {
     float v = down ? 1.f : 0.f;
     switch (vk) {
-        case 'W': moveKeys[0]=v; break; case 'S': moveKeys[1]=v; break;
-        case 'A': moveKeys[2]=v; break; case 'D': moveKeys[3]=v; break;
-        case 'Q': moveKeys[4]=v; break; case 'E': moveKeys[5]=v; break;
+        case 'W': moveKeys[0]=v; break; case 'R': moveKeys[1]=v; break;
+        case 'S': moveKeys[2]=v; break; case 'A': moveKeys[3]=v; break;
+        case 'F': moveKeys[4]=v; break; case 'Q': moveKeys[5]=v; break;
     }
 }
 

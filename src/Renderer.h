@@ -10,8 +10,8 @@ struct Camera {
     float  pitch  = -0.6f;  // radians (negative = looking down)
     float  fovY   = 60.f;   // degrees
     float  translation_speed = 120.f;
-    float  follow_dist    = 8.f;   // How far behind the creature
-    float  follow_height  = 4.f;   // How high above the creature
+    float  follow_dist    = 16.f;   // How far behind the creature
+    float  follow_height  = 10.f;   // How high above the creature
     float  follow_speed   = 5.f;   // How quickly the camera snaps to position
 
     // Forward vector from yaw+pitch
@@ -45,21 +45,37 @@ struct Renderer {
     // ── Shaders & layout ──────────────────────────────────────────────────────
     ID3D11VertexShader*   terrainVS          = nullptr;
     ID3D11PixelShader*    terrainPS          = nullptr;
+    ID3D11InputLayout*    terrainLayout = nullptr;
+
+    // ── Creature shaders & layout ─────────────────────────────────────────────
     ID3D11VertexShader*   creatureVS         = nullptr;
     ID3D11PixelShader*    creaturePS         = nullptr;
-    ID3D11InputLayout*    terrainLayout      = nullptr;
     ID3D11InputLayout*    creatureLayout     = nullptr;
+
+    // ── Simple (position-only) shaders – shared by water + FOV cone ──────────
+    // simpleVS: position-only VS that just multiplies by viewProj.
+    // waterPS : renders translucent blue.
+    // fovPS   : renders translucent yellow.
+    ID3D11VertexShader*   simpleVS   = nullptr;
+    ID3D11PixelShader*    waterPS    = nullptr;
+    ID3D11PixelShader*    fovPS      = nullptr;
+    ID3D11InputLayout*    simpleLayout = nullptr;
 
     // ── Buffers ────────────────────────────────────────────────────────────────
     ID3D11Buffer*         cbFrame            = nullptr;
     ID3D11Buffer*         creatureInstanceVB = nullptr;
     ID3D11Buffer*         creatureQuadVB     = nullptr;
+    ID3D11Buffer*         waterVB            = nullptr;   // two triangles covering the world
+    ID3D11Buffer*         fovConeVB          = nullptr;   // dynamic: updated each frame
 
     // ── States ─────────────────────────────────────────────────────────────────
     ID3D11RasterizerState*   rsWireframe = nullptr;
     ID3D11RasterizerState*   rsSolid     = nullptr;
+    ID3D11RasterizerState*   rsSolidNoCull  = nullptr;  // for FOV cone (double-sided)
     ID3D11DepthStencilState* dssDepth    = nullptr;
+    ID3D11DepthStencilState* dssNoDepthWrite= nullptr;  // depth test ON, write OFF (water)
     ID3D11BlendState*        bsAlpha     = nullptr;
+    bool waterBuilt = false;                // set after buildWaterMesh()
 
     // ── Depth buffer (public so main can bind it) ─────────────────────────────
     ID3D11Texture2D*        depthTex = nullptr;
@@ -72,6 +88,13 @@ struct Renderer {
     float    fogRadius    = 30.f;
     Float3   fowCenter    = {};
     EntityID playerID     = INVALID_ID;
+
+    // ── New rendering features ────────────────────────────────────────────────
+    EntityID selectedID   = INVALID_ID;  // creature whose FOV cone to draw
+    bool     showFOVCone  = true;        // toggle FOV cone overlay
+    bool     showWater    = true;        // toggle water plane
+    float    waterLevel   = 0.45f;       // Y-height of the water plane
+    bool     lockYawFollow= false;       // when true, following a creature won't rotate the camera
 
     // ── Per-frame constant buffer layout (matches HLSL cbuffer) ───────────────
     struct alignas(16) FrameConstants {
@@ -96,6 +119,9 @@ struct Renderer {
         float pad[3];
     };
 
+    // Simple float3 vertex used for water plane and FOV cone
+    struct SimpleVertex { float x, y, z; };
+
     // ── Per-chunk GPU meshes ───────────────────────────────────────────────────
     struct ChunkMesh {
         ID3D11Buffer* vb       = nullptr;
@@ -114,15 +140,25 @@ struct Renderer {
     void onMouseMove(int dx, int dy, bool rightDown);
     void onKey(int vk, bool down);
 
+    // Terrain raycast for hover tooltip: returns true and sets outPos/outMat
+    // if the mouse ray hits the terrain. mx/my are window-space pixel coords.
+    bool screenToTerrain(float mx, float my, float W, float H,
+                         const World& world, Vec3& outPos, uint8_t& outMat) const;
+
 private:
     bool createShaders();
     bool createBuffers(int w, int h);
     bool createDepthBuffer(int w, int h);
     void buildChunkMesh(const World& world, int cx, int cz);
-    void uploadCreatureInstances(const World& world);
+    void buildWaterMesh(const World& world);
     void updateFrameConstants(const World& world, float aspect);
     void renderTerrain(const World& world);
     void renderCreatures(const World& world);
+    void renderWater(const World& world);
+    void renderFOVCone(const World& world);
+
+    static constexpr int FOV_CONE_SEGS = 64;
+    static constexpr int FOV_CONE_MAX_VERTS = FOV_CONE_SEGS * 3;
 
     int   winW = 1280, winH = 800;
     float moveKeys[6] = {};   // W S A D Q E

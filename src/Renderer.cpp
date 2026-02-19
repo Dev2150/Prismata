@@ -66,8 +66,18 @@ struct VOut { float4 sv : SV_POSITION; float4 col : COLOR; };
 VOut VSMain(VIn v) {
     // Build a camera-facing frame at the creature's position:
     // right = perpendicular to the world-up (0,1,0) and the view direction
-    float3 toCam = normalize(camPos.xyz - v.worldPos);
-    float3 right = normalize(cross(float3(0,1,0), toCam));
+    // Build right vector; if toCam is nearly vertical, fall back to world-X
+    float3 toCam = camPos.xyz - v.worldPos;
+    float  camDist = length(toCam);
+    if (camDist < 0.001f) { VOut o; o.sv=float4(0,0,2,1); o.col=float4(0,0,0,0); return o; }
+    toCam /= camDist;
+
+    // Build right vector; if toCam is nearly vertical, fall back to world-X
+    float3 worldUp = float3(0,1,0);
+    float3 right = cross(worldUp, toCam);
+    float  rLen  = length(right);
+    if (rLen < 0.01f) right = float3(1,0,0);
+    else               right /= rLen;
     float3 up    = cross(toCam, right);
     // Expand the 2D quad corner into 3D world space
     float3 wpos  = v.worldPos + right * v.quadPos.x * v.size
@@ -78,6 +88,33 @@ VOut VSMain(VIn v) {
     return o;
 }
 float4 PSMain(VOut v) : SV_TARGET { return v.col; }
+)HLSL";
+
+// ── HLSL: Simple position-only VS (shared by water + FOV cone) ────────────────
+static const char* SIMPLE_HLSL = R"HLSL(
+cbuffer FrameConstants : register(b0) {
+    float4x4 viewProj;
+    float4   camPos;
+    float4   lightDir;
+    float4   fowData;
+};
+struct VIn  { float3 pos : POSITION; };
+struct VOut { float4 sv  : SV_POSITION; };
+VOut VSMain(VIn v) {
+    VOut o;
+    o.sv = mul(float4(v.pos, 1.0f), viewProj);
+    return o;
+}
+
+// Water pixel shader: animated translucent deep-blue
+float4 WaterPS(VOut v) : SV_TARGET {
+    return float4(0.08f, 0.35f, 0.72f, 0.78f);
+}
+
+// FOV cone pixel shader: translucent yellow
+float4 FovPS(VOut v) : SV_TARGET {
+    return float4(1.0f, 0.95f, 0.2f, 0.18f);
+}
 )HLSL";
 
 // ── Shader compile helper ─────────────────────────────────────────────────────
@@ -126,14 +163,24 @@ bool Renderer::init(ID3D11Device* dev, ID3D11DeviceContext* c, int w, int h) {
     rd.FillMode = D3D11_FILL_SOLID; rd.CullMode = D3D11_CULL_BACK;
     rd.FrontCounterClockwise = FALSE; rd.DepthClipEnable = TRUE;
     device->CreateRasterizerState(&rd, &rsSolid);
+
+    // Wireframe rasteriser
     rd.FillMode = D3D11_FILL_WIREFRAME; rd.CullMode = D3D11_CULL_NONE;
     device->CreateRasterizerState(&rd, &rsWireframe);
+
+    // No-cull solid (for FOV cone – visible from both sides)
+    rd.FillMode = D3D11_FILL_SOLID; rd.CullMode = D3D11_CULL_NONE;
+    device->CreateRasterizerState(&rd, &rsSolidNoCull);
 
     // Depth-stencil state: enable depth testing with standard LESS comparison
     D3D11_DEPTH_STENCIL_DESC dsd{};
     dsd.DepthEnable = TRUE; dsd.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
     dsd.DepthFunc = D3D11_COMPARISON_LESS;
     device->CreateDepthStencilState(&dsd, &dssDepth);
+
+    // Depth state: test only, no write (water / overlays)
+    dsd.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+    device->CreateDepthStencilState(&dsd, &dssNoDepthWrite);
 
     // Alpha-blend state for creature billboards (standard src_alpha / inv_src_alpha)
     D3D11_BLEND_DESC bd{};
@@ -149,6 +196,7 @@ bool Renderer::init(ID3D11Device* dev, ID3D11DeviceContext* c, int w, int h) {
 }
 
 bool Renderer::createShaders() {
+    // ── Terrain ───────────────────────────────────────────────────────────────
     // Compile terrain shaders and create the input layout.
     // The input layout describes how the vertex buffer bytes map to shader semantics.
     ID3DBlob* tvs = compileShader(TERRAIN_HLSL, "VSMain", "vs_5_0");
@@ -165,6 +213,7 @@ bool Renderer::createShaders() {
     device->CreateInputLayout(td, 3, tvs->GetBufferPointer(), tvs->GetBufferSize(), &terrainLayout);
     tvs->Release(); tps->Release();
 
+    // ── Creature billboards ───────────────────────────────────────────────────
     // Creature shaders use a two-stream instanced layout:
     //   stream 0 (slot 0) = per-vertex quad corner (2 floats, step rate = per vertex)
     //   stream 1 (slot 1) = per-instance data (pos, yaw, color, size; step rate = per instance)
@@ -186,6 +235,25 @@ bool Renderer::createShaders() {
     };
     device->CreateInputLayout(cd, 6, cvs->GetBufferPointer(), cvs->GetBufferSize(), &creatureLayout);
     cvs->Release(); cps->Release();
+
+    // ── Simple (position-only) VS + Water PS + FOV PS ─────────────────────────
+    ID3DBlob* svs  = compileShader(SIMPLE_HLSL, "VSMain",  "vs_5_0");
+    ID3DBlob* wps  = compileShader(SIMPLE_HLSL, "WaterPS", "ps_5_0");
+    ID3DBlob* fps  = compileShader(SIMPLE_HLSL, "FovPS",   "ps_5_0");
+    if (!svs || !wps || !fps) {
+        if(svs)svs->Release(); if(wps)wps->Release(); if(fps)fps->Release();
+        return false;
+    }
+    device->CreateVertexShader(svs->GetBufferPointer(), svs->GetBufferSize(), nullptr, &simpleVS);
+    device->CreatePixelShader (wps->GetBufferPointer(), wps->GetBufferSize(), nullptr, &waterPS);
+    device->CreatePixelShader (fps->GetBufferPointer(), fps->GetBufferSize(), nullptr, &fovPS);
+
+    D3D11_INPUT_ELEMENT_DESC sd[] = {
+        {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    };
+    device->CreateInputLayout(sd, 1, svs->GetBufferPointer(), svs->GetBufferSize(), &simpleLayout);
+    svs->Release(); wps->Release(); fps->Release();
+
     return true;
 }
 
@@ -212,7 +280,39 @@ bool Renderer::createBuffers(int w, int h) {
     bd.Usage = D3D11_USAGE_DYNAMIC; bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     device->CreateBuffer(&bd, nullptr, &creatureInstanceVB);
 
+    // FOV cone – dynamic, position-only, big enough for all segments
+    bd.ByteWidth = (UINT)(sizeof(SimpleVertex) * FOV_CONE_MAX_VERTS);
+    bd.Usage = D3D11_USAGE_DYNAMIC; bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    device->CreateBuffer(&bd, nullptr, &fovConeVB);
+
     return createDepthBuffer(w, h);
+}
+
+// Build the water plane mesh (called lazily once world dims are known)
+void Renderer::buildWaterMesh(const World& world) {
+    float maxX = (float)(world.worldCX * CHUNK_SIZE);
+    float maxZ = (float)(world.worldCZ * CHUNK_SIZE);
+    float wy   = waterLevel;
+
+    SimpleVertex verts[] = {
+        {0.f,  wy, 0.f},
+        {maxX, wy, 0.f},
+        {0.f,  wy, maxZ},
+        {maxX, wy, 0.f},
+        {maxX, wy, maxZ},
+        {0.f,  wy, maxZ},
+    };
+
+    safeRelease(waterVB);
+    D3D11_BUFFER_DESC bd{};
+    bd.ByteWidth  = sizeof(verts);
+    bd.Usage      = D3D11_USAGE_IMMUTABLE;
+    bd.BindFlags  = D3D11_BIND_VERTEX_BUFFER;
+    D3D11_SUBRESOURCE_DATA sd{};
+    sd.pSysMem = verts;
+    device->CreateBuffer(&bd, &sd, &waterVB);
+    waterBuilt = true;
 }
 
 bool Renderer::createDepthBuffer(int w, int h) {
@@ -351,9 +451,19 @@ void Renderer::render(const World& world, float aspectRatio) {
         }
     }
     updateFrameConstants(world, aspectRatio);
+
+    // ── Terrain (solid/wireframe) ─────────────────────────────────────────────
     ctx->RSSetState(wireframe ? rsWireframe : rsSolid);
     ctx->OMSetDepthStencilState(dssDepth, 0);
     renderTerrain(world);
+
+    // ── Water plane ───────────────────────────────────────────────────────────
+    if (showWater && !wireframe) renderWater(world);
+
+    // ── FOV cone (overlay, no depth write) ───────────────────────────────────
+    if (showFOVCone && !wireframe) renderFOVCone(world);
+
+    // ── Creature billboards ───────────────────────────────────────────────────
     renderCreatures(world);
 }
 
@@ -374,6 +484,108 @@ void Renderer::renderTerrain(const World& world) {
             ctx->DrawIndexed((UINT)cm.idxCount, 0, 0);
         }
     }
+}
+
+// ── Water ─────────────────────────────────────────────────────────────────────
+void Renderer::renderWater(const World& world) {
+    if (!waterBuilt) buildWaterMesh(world);
+    if (!waterVB) return;
+
+    ctx->RSSetState(rsSolid);
+    ctx->IASetInputLayout(simpleLayout);
+    ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    ctx->VSSetShader(simpleVS, nullptr, 0);
+    ctx->PSSetShader(waterPS,  nullptr, 0);
+
+    float bf[4] = {};
+    ctx->OMSetBlendState(bsAlpha, bf, 0xFFFFFFFF);
+    ctx->OMSetDepthStencilState(dssNoDepthWrite, 0);  // test ON, write OFF
+
+    UINT stride = sizeof(SimpleVertex), offset = 0;
+    ctx->IASetVertexBuffers(0, 1, &waterVB, &stride, &offset);
+    ctx->Draw(6, 0);
+
+    ctx->OMSetBlendState(nullptr, bf, 0xFFFFFFFF);
+    ctx->OMSetDepthStencilState(dssDepth, 0);
+}
+
+// ── FOV cone ──────────────────────────────────────────────────────────────────
+// Draws a translucent sector on the terrain surface showing the selected
+// creature's vision field (range + FOV angle).
+void Renderer::renderFOVCone(const World& world) {
+    // Draw for both the selected creature and the possessed (player) creature
+    EntityID id = (selectedID != INVALID_ID) ? selectedID : playerID;
+    if (id == INVALID_ID) return;
+
+    auto it = world.idToIndex.find(id);
+    if (it == world.idToIndex.end()) return;
+    const Creature& c = world.creatures[it->second];
+    if (!c.alive) return;
+
+    float range    = c.genome.visionRange();
+    float halfFOV  = c.genome.visionFOV() * 3.14159265f / 360.f;  // half-angle, radians
+    float yaw      = c.yaw;
+    float cx       = c.pos.x;
+    float cz       = c.pos.z;
+    float cy       = c.pos.y;
+
+    // Build triangle-list sector on the terrain surface.
+    // Each triangle = (creature_centre, arc_point_i, arc_point_i+1).
+    // Arc points are snapped to the terrain height so the cone drapes naturally.
+    std::vector<SimpleVertex> verts;
+    verts.reserve(FOV_CONE_SEGS * 3);
+
+    float startAng = yaw - halfFOV;
+    float endAng   = yaw + halfFOV;
+
+    for (int i = 0; i < FOV_CONE_SEGS; i++) {
+        float a0 = startAng + (endAng - startAng) * (float)i       / FOV_CONE_SEGS;
+        float a1 = startAng + (endAng - startAng) * (float)(i + 1) / FOV_CONE_SEGS;
+
+        float x0 = cx + std::sin(a0) * range;
+        float z0 = cz + std::cos(a0) * range;
+        float x1 = cx + std::sin(a1) * range;
+        float z1 = cz + std::cos(a1) * range;
+
+        // Clamp arc points to world boundaries
+        float maxW = (float)(world.worldCX * CHUNK_SIZE - 1);
+        float maxH = (float)(world.worldCZ * CHUNK_SIZE - 1);
+        x0 = std::clamp(x0, 0.f, maxW); z0 = std::clamp(z0, 0.f, maxH);
+        x1 = std::clamp(x1, 0.f, maxW); z1 = std::clamp(z1, 0.f, maxH);
+
+        float y0 = world.heightAt(x0, z0) + 0.12f;
+        float y1 = world.heightAt(x1, z1) + 0.12f;
+
+        verts.push_back({cx,  cy  + 0.12f, cz });
+        verts.push_back({x0,  y0,           z0 });
+        verts.push_back({x1,  y1,           z1 });
+    }
+
+    // Upload
+    D3D11_MAPPED_SUBRESOURCE ms{};
+    ctx->Map(fovConeVB, 0, D3D11_MAP_WRITE_DISCARD, 0, &ms);
+    size_t copyBytes = std::min(verts.size() * sizeof(SimpleVertex),
+                                (size_t)(FOV_CONE_MAX_VERTS * sizeof(SimpleVertex)));
+    memcpy(ms.pData, verts.data(), copyBytes);
+    ctx->Unmap(fovConeVB, 0);
+
+    ctx->RSSetState(rsSolidNoCull);
+    ctx->IASetInputLayout(simpleLayout);
+    ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    ctx->VSSetShader(simpleVS, nullptr, 0);
+    ctx->PSSetShader(fovPS,    nullptr, 0);
+
+    float bf[4] = {};
+    ctx->OMSetBlendState(bsAlpha, bf, 0xFFFFFFFF);
+    ctx->OMSetDepthStencilState(dssNoDepthWrite, 0);
+
+    UINT stride = sizeof(SimpleVertex), offset = 0;
+    ctx->IASetVertexBuffers(0, 1, &fovConeVB, &stride, &offset);
+    ctx->Draw((UINT)verts.size(), 0);
+
+    ctx->OMSetBlendState(nullptr, bf, 0xFFFFFFFF);
+    ctx->OMSetDepthStencilState(dssDepth, 0);
+    ctx->RSSetState(rsSolid);
 }
 
 // Convert a genome hue [0,360] to an RGB colour via 6-sector HSV approximation.
@@ -406,24 +618,45 @@ void Renderer::renderCreatures(const World& world) {
     for (const auto& c : world.creatures) {
         if (!c.alive || count >= 4096) continue;
         float rgb[3]; hueToRGB(c.genome.hue(), rgb);
-        // Raise the billboard centre by half the body size so it sits on the terrain
+
+        bool isSelected = (c.id == selectedID || c.id == playerID);
+
+        // Raise the billboard centre above terrain; minimum visible size.
+        float bSize = std::max(1.5f, c.genome.bodySize() * 2.0f);
         inst[count].pos[0] = c.pos.x;
-        inst[count].pos[1] = c.pos.y + c.genome.bodySize() * 0.5f;
+        inst[count].pos[1] = c.pos.y + bSize * 0.5f;
         inst[count].pos[2] = c.pos.z;
         inst[count].yaw    = c.yaw;
-        inst[count].color[0]=rgb[0]; inst[count].color[1]=rgb[1];
-        inst[count].color[2]=rgb[2]; inst[count].color[3]=0.9f;
-        inst[count].size   = c.genome.bodySize() * 0.8f;
+
+        if (isSelected) {
+            // Highlighted: white tint, slightly larger
+            inst[count].color[0] = std::min(1.f, rgb[0] * 1.4f + 0.2f);
+            inst[count].color[1] = std::min(1.f, rgb[1] * 1.4f + 0.2f);
+            inst[count].color[2] = std::min(1.f, rgb[2] * 1.4f + 0.2f);
+            inst[count].color[3] = 1.0f;
+            inst[count].size     = bSize * 1.35f;
+        } else {
+            inst[count].color[0] = rgb[0];
+            inst[count].color[1] = rgb[1];
+            inst[count].color[2] = rgb[2];
+            inst[count].color[3] = 0.95f;
+            inst[count].size     = bSize;
+        }
         inst[count].pad[0] = inst[count].pad[1] = inst[count].pad[2] = 0.f;
         count++;
     }
     ctx->Unmap(creatureInstanceVB, 0);
     if (count == 0) return;
 
+    ctx->RSSetState(rsSolid);
     ctx->IASetInputLayout(creatureLayout);
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP); // 4 verts → 2 triangles
     ctx->VSSetShader(creatureVS, nullptr, 0);
     ctx->PSSetShader(creaturePS, nullptr, 0);
+
+    // Draw creatures with alpha blending, depth test ON, write ON
+    // (so creatures occlude each other properly)
+    ctx->OMSetDepthStencilState(dssDepth, 0);
     float bf[4]={};
     ctx->OMSetBlendState(bsAlpha, bf, 0xFFFFFFFF);   // enable alpha blending for billboards
     // Bind both vertex streams: stream 0 = quad verts, stream 1 = per-instance data
@@ -432,6 +665,72 @@ void Renderer::renderCreatures(const World& world) {
     ctx->IASetVertexBuffers(0, 2, vbs, strides, offsets);
     ctx->DrawInstanced(4, (UINT)count, 0, 0);  // 4 verts × count instances
     ctx->OMSetBlendState(nullptr, bf, 0xFFFFFFFF);   // restore default (no blending)
+}
+
+// ── Terrain raycast for hover tooltip ─────────────────────────────────────────
+bool Renderer::screenToTerrain(float mx, float my, float W, float H,
+                               const World& world, Vec3& outPos, uint8_t& outMat) const {
+    if (W < 1.f || H < 1.f) return false;
+
+    float ndcX =  (mx / W) * 2.f - 1.f;
+    float ndcY = -(my / H) * 2.f + 1.f;
+
+    Mat4 vp    = camera.viewMatrix() * camera.projMatrix(W / H);
+    Mat4 vpInv = vp.inversed();
+
+    auto unproject = [&](float z) -> Vec4 {
+        Vec4 clip = {ndcX, ndcY, z, 1.f};
+        Vec4 w    = vpInv.transform(clip);
+        float iw  = (std::abs(w.w) > 1e-7f) ? 1.f / w.w : 0.f;
+        return {w.x * iw, w.y * iw, w.z * iw, 1.f};
+    };
+
+    Vec4 near4 = unproject(0.f);
+    Vec4 far4  = unproject(1.f);
+
+    float dx = far4.x - near4.x, dy = far4.y - near4.y, dz = far4.z - near4.z;
+    float dl = std::sqrt(dx*dx + dy*dy + dz*dz);
+    if (dl < 1e-6f) return false;
+    dx /= dl; dy /= dl; dz /= dl;
+
+    // Ray march: coarse step then refine
+    float maxT  = 800.f;
+    float step  = 1.0f;
+    float prevY = near4.y, prevT = 0.f;
+
+    for (float t = step; t < maxT; t += step) {
+        float rx = near4.x + dx * t;
+        float ry = near4.y + dy * t;
+        float rz = near4.z + dz * t;
+
+        float wx = (float)(world.worldCX * CHUNK_SIZE - 1);
+        float wz = (float)(world.worldCZ * CHUNK_SIZE - 1);
+        if (rx < 0.f || rx > wx || rz < 0.f || rz > wz) { prevY = ry; prevT = t; continue; }
+
+        float th = world.heightAt(rx, rz);
+        if (ry <= th) {
+            // Binary-search for a more precise hit
+            float lo = prevT, hi = t;
+            for (int iter = 0; iter < 8; iter++) {
+                float mid = (lo + hi) * 0.5f;
+                float mrx = near4.x + dx * mid;
+                float mry = near4.y + dy * mid;
+                float mrz = near4.z + dz * mid;
+                float mth = world.heightAt(mrx, mrz);
+                if (mry <= mth) hi = mid;
+                else             lo = mid;
+            }
+            float fx = near4.x + dx * hi;
+            float fz = near4.z + dz * hi;
+            outPos.x = fx;
+            outPos.z = fz;
+            outPos.y = world.heightAt(fx, fz);
+            outMat   = world.materialAt(fx, fz);
+            return true;
+        }
+        prevY = ry; prevT = t;
+    }
+    return false;
 }
 
 // ── Camera movement ───────────────────────────────────────────────────────────
@@ -450,8 +749,8 @@ void Renderer::tickCamera(float dt, const World& world) {
         const Creature& creature = world.creatures[it->second];
 
         // Target position: follow_dist metres behind and above the creature
-        float creatureForwardX = sin(creature.yaw);
-        float creatureForwardZ = cos(creature.yaw);
+        float creatureForwardX = std::sin(creature.yaw);
+        float creatureForwardZ = std::cos(creature.yaw);
         Float3 targetPos = {
             creature.pos.x - creatureForwardX * camera.follow_dist,
             creature.pos.y + camera.follow_dist,      // always above terrain level
@@ -460,18 +759,20 @@ void Renderer::tickCamera(float dt, const World& world) {
 
         // Exponential approach: blend = 1 - e^(-speed*dt) ensures consistent
         // smoothing regardless of frame rate (unlike a fixed lerp factor)
-        float blend = 1.0f - exp(-dt * camera.follow_speed);
+        float blend = 1.0f - std::exp(-dt * camera.follow_speed);
         camera.pos.x += (targetPos.x - camera.pos.x) * blend;
         camera.pos.y += (targetPos.y - camera.pos.y) * blend;
         camera.pos.z += (targetPos.z - camera.pos.z) * blend;
 
-        // Point camera toward the creature
-        Float3 lookDir = normalise3(
-            creature.pos.x - camera.pos.x,
-            creature.pos.y - camera.pos.y,
-            creature.pos.z - camera.pos.z);
-        camera.yaw   = atan2(lookDir.x, lookDir.z);
-        camera.pitch = asin(lookDir.y);
+        // ── Yaw-lock option: skip rotation update when locked ─────────────────
+        if (!lockYawFollow) {
+            Float3 lookDir = normalise3(
+                creature.pos.x - camera.pos.x,
+                creature.pos.y - camera.pos.y,
+                creature.pos.z - camera.pos.z);
+            camera.yaw   = std::atan2(lookDir.x, lookDir.z);
+            camera.pitch = std::asin(std::clamp(lookDir.y, -0.99f, 0.99f));
+        }
     }
     // FREE-LOOK MODE: WASDQE keyboard movement in the camera's local frame
     else {
@@ -513,9 +814,11 @@ void Renderer::shutdown() {
     for (auto& cm : chunkMeshes) { safeRelease(cm.vb); safeRelease(cm.ib); }
     safeRelease(terrainVS);  safeRelease(terrainPS);
     safeRelease(creatureVS); safeRelease(creaturePS);
-    safeRelease(terrainLayout); safeRelease(creatureLayout);
+    safeRelease(simpleVS);   safeRelease(waterPS);   safeRelease(fovPS);
+    safeRelease(terrainLayout); safeRelease(creatureLayout); safeRelease(simpleLayout);
     safeRelease(cbFrame); safeRelease(creatureQuadVB); safeRelease(creatureInstanceVB);
-    safeRelease(rsWireframe); safeRelease(rsSolid);
-    safeRelease(dssDepth); safeRelease(bsAlpha);
+    safeRelease(waterVB); safeRelease(fovConeVB);
+    safeRelease(rsWireframe); safeRelease(rsSolid); safeRelease(rsSolidNoCull);
+    safeRelease(dssDepth); safeRelease(dssNoDepthWrite); safeRelease(bsAlpha);
     safeRelease(depthTex); safeRelease(depthDSV);
 }

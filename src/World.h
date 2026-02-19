@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <functional>
 #include <cstdint>
+#include <algorithm>
 
 // ── Terrain ───────────────────────────────────────────────────────────────────
 struct VoxelColumn {
@@ -77,6 +78,29 @@ struct World {
 
     // Nearest water position within radius
     bool  findWater(const Vec3& from, float radius, Vec3& outPos) const;
+
+    // ── Material lookup (for terrain hover tooltip) ───────────────────────────
+    // Returns the material index of the cell at world-space (x, z).
+    // Material codes: 0=grass, 1=rock, 2=sand, 3=water, 4=snow
+    uint8_t materialAt(float x, float z) const {
+        int gx = std::clamp((int)x, 0, worldCX * CHUNK_SIZE - 1);
+        int gz = std::clamp((int)z, 0, worldCZ * CHUNK_SIZE - 1);
+        const Chunk* ch = chunkAt(gx / CHUNK_SIZE, gz / CHUNK_SIZE);
+        if (!ch) return 0;
+        return ch->cells[gz % CHUNK_SIZE][gx % CHUNK_SIZE].material;
+    }
+
+    // Human-readable material name
+    static const char* materialName(uint8_t mat) {
+        switch (mat) {
+            case 0: return "Grass";
+            case 1: return "Rock";
+            case 2: return "Sand";
+            case 3: return "Water";
+            case 4: return "Snow";
+            default: return "Unknown";
+        }
+    }
 
     // Public chunk accessor (for Renderer)
     const Chunk* chunkAtPublic(int cx, int cz) const { return chunkAt(cx, cz); }

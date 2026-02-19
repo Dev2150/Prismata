@@ -5,13 +5,15 @@
 #include <cmath>
 #include <vector>
 
-// ── HLSL shaders ──────────────────────────────────────────────────────────────
+// ── HLSL Shaders ──────────────────────────────────────────────────────────────
+// Terrain shader: standard diffuse lighting with optional fog-of-war darkening.
+// The cbuffer matches the FrameConstants struct in Renderer.h (row-major layout).
 static const char* TERRAIN_HLSL = R"HLSL(
 cbuffer FrameConstants : register(b0) {
     float4x4 viewProj;
     float4   camPos;
     float4   lightDir;
-    float4   fowData;   // xyz=center, w=radius (0=off)
+    float4   fowData;   // xyz=fog center (world), w=fog radius (0=disabled)
 };
 struct VIn  { float3 pos : POSITION; float3 nrm : NORMAL; float4 col : COLOR; };
 struct VOut { float4 sv  : SV_POSITION; float3 wpos : TEXCOORD0;
@@ -27,16 +29,24 @@ VOut VSMain(VIn v) {
 float4 PSMain(VOut v) : SV_TARGET {
     float3 L   = normalize(-lightDir.xyz);
     float  ndl = saturate(dot(normalize(v.nrm), L));
+    // Lambertian: ambient (0.25) + diffuse (0.75)
     float3 lit = v.col.rgb * (0.25f + 0.75f * ndl);
+    // Fog of war: smoothly darken terrain outside the player's vision radius.
+    // f=0 inside the lit zone, f=1 in the fully dark zone, smooth transition
+    // over the outer 20% of the radius.
     if (fowData.w > 0.0f) {
         float d = length(v.wpos.xz - fowData.xz);
         float f = saturate((d - fowData.w * 0.8f) / (fowData.w * 0.2f + 0.001f));
-        lit = lerp(lit, float3(0.02f, 0.02f, 0.05f), f * f);
+        lit = lerp(lit, float3(0.02f, 0.02f, 0.05f), f * f);  // f² for a softer edge
     }
     return float4(lit, 1.0f);
 }
 )HLSL";
 
+// Creature shader: camera-facing billboards (quads that always face the viewer).
+// Uses per-instance data (world position, colour, size) via a second vertex buffer.
+// Each billboard is a 2D quad in [-0.5, 0.5] that is expanded in world space
+// along the camera's right and up vectors so it always faces the camera.
 static const char* CREATURE_HLSL = R"HLSL(
 cbuffer FrameConstants : register(b0) {
     float4x4 viewProj;
@@ -45,18 +55,21 @@ cbuffer FrameConstants : register(b0) {
     float4   fowData;
 };
 struct VIn {
-    float2 quadPos  : POSITION;
-    float3 worldPos : INST_POS;
-    float  yaw      : INST_YAW;
-    float4 color    : INST_COLOR;
-    float  size     : INST_SIZE;
-    float3 pad      : INST_PAD;
+    float2 quadPos  : POSITION;    // [-0.5,0.5] local quad corner (per-vertex)
+    float3 worldPos : INST_POS;    // creature world position (per-instance)
+    float  yaw      : INST_YAW;    // creature heading (currently unused in shader)
+    float4 color    : INST_COLOR;  // RGBA display colour (per-instance)
+    float  size     : INST_SIZE;   // billboard world-space size (per-instance)
+    float3 pad      : INST_PAD;    // padding to align to 16-byte boundary
 };
 struct VOut { float4 sv : SV_POSITION; float4 col : COLOR; };
 VOut VSMain(VIn v) {
+    // Build a camera-facing frame at the creature's position:
+    // right = perpendicular to the world-up (0,1,0) and the view direction
     float3 toCam = normalize(camPos.xyz - v.worldPos);
     float3 right = normalize(cross(float3(0,1,0), toCam));
     float3 up    = cross(toCam, right);
+    // Expand the 2D quad corner into 3D world space
     float3 wpos  = v.worldPos + right * v.quadPos.x * v.size
                               + up    * v.quadPos.y * v.size;
     VOut o;
@@ -68,6 +81,9 @@ float4 PSMain(VOut v) : SV_TARGET { return v.col; }
 )HLSL";
 
 // ── Shader compile helper ─────────────────────────────────────────────────────
+// Compiles HLSL source at runtime using D3DCompile. In a shipping game you would
+// pre-compile shaders to .cso files, but runtime compilation is convenient for
+// rapid iteration. Errors are printed to the debug output.
 static ID3DBlob* compileShader(const char* src, const char* entry, const char* target) {
     ID3DBlob* blob = nullptr, *err = nullptr;
     HRESULT hr = D3DCompile(src, strlen(src), nullptr, nullptr, nullptr,
@@ -80,14 +96,20 @@ static ID3DBlob* compileShader(const char* src, const char* entry, const char* t
     return blob;
 }
 
-// ── Material colour ───────────────────────────────────────────────────────────
+// ── Material colour lookup ────────────────────────────────────────────────────
+// Maps a terrain material index + slope to an RGBA colour for the vertex buffer.
+// Steep slopes override the biome colour with rock to simulate scree/cliffs.
 static void materialColor(uint8_t mat, float slope, float out[4]) {
-    // water, rock, sand, snow, grass
+    // Material colours: water, rock, sand, snow, grass
     static const float cols[5][4] = {
-        {0.10f,0.30f,0.70f,1}, {0.50f,0.50f,0.50f,1},
-        {0.70f,0.60f,0.40f,1}, {0.90f,0.95f,1.00f,1},
-        {0.25f,0.55f,0.15f,1}
+        {0.10f,0.30f,0.70f,1},   // 0: water  (deep blue)
+        {0.50f,0.50f,0.50f,1},   // 1: rock   (grey)
+        {0.70f,0.60f,0.40f,1},   // 2: sand   (tan)
+        {0.90f,0.95f,1.00f,1},   // 3: snow   (near-white)
+        {0.25f,0.55f,0.15f,1}    // 4: grass  (green)
     };
+    // Steep slopes (> ~37°) look like bare rock regardless of base material,
+    // except snow which retains its colour (snowfields can be steep)
     if (slope > 0.6f && mat != 3) { for(int i=0;i<4;i++) out[i]=cols[1][i]; return; }
     int idx = (mat >= 5) ? 0 : mat;
     for (int i = 0; i < 4; i++) out[i] = cols[idx][i];
@@ -99,6 +121,7 @@ bool Renderer::init(ID3D11Device* dev, ID3D11DeviceContext* c, int w, int h) {
     if (!createShaders())     return false;
     if (!createBuffers(w, h)) return false;
 
+    // Rasterizer states: solid (normal) and wireframe (debug visualisation)
     D3D11_RASTERIZER_DESC rd{};
     rd.FillMode = D3D11_FILL_SOLID; rd.CullMode = D3D11_CULL_BACK;
     rd.FrontCounterClockwise = FALSE; rd.DepthClipEnable = TRUE;
@@ -106,11 +129,13 @@ bool Renderer::init(ID3D11Device* dev, ID3D11DeviceContext* c, int w, int h) {
     rd.FillMode = D3D11_FILL_WIREFRAME; rd.CullMode = D3D11_CULL_NONE;
     device->CreateRasterizerState(&rd, &rsWireframe);
 
+    // Depth-stencil state: enable depth testing with standard LESS comparison
     D3D11_DEPTH_STENCIL_DESC dsd{};
     dsd.DepthEnable = TRUE; dsd.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
     dsd.DepthFunc = D3D11_COMPARISON_LESS;
     device->CreateDepthStencilState(&dsd, &dssDepth);
 
+    // Alpha-blend state for creature billboards (standard src_alpha / inv_src_alpha)
     D3D11_BLEND_DESC bd{};
     auto& rt = bd.RenderTarget[0];
     rt.BlendEnable = TRUE;
@@ -124,7 +149,8 @@ bool Renderer::init(ID3D11Device* dev, ID3D11DeviceContext* c, int w, int h) {
 }
 
 bool Renderer::createShaders() {
-    // Terrain
+    // Compile terrain shaders and create the input layout.
+    // The input layout describes how the vertex buffer bytes map to shader semantics.
     ID3DBlob* tvs = compileShader(TERRAIN_HLSL, "VSMain", "vs_5_0");
     ID3DBlob* tps = compileShader(TERRAIN_HLSL, "PSMain", "ps_5_0");
     if (!tvs || !tps) { if(tvs)tvs->Release(); if(tps)tps->Release(); return false; }
@@ -139,7 +165,9 @@ bool Renderer::createShaders() {
     device->CreateInputLayout(td, 3, tvs->GetBufferPointer(), tvs->GetBufferSize(), &terrainLayout);
     tvs->Release(); tps->Release();
 
-    // Creatures
+    // Creature shaders use a two-stream instanced layout:
+    //   stream 0 (slot 0) = per-vertex quad corner (2 floats, step rate = per vertex)
+    //   stream 1 (slot 1) = per-instance data (pos, yaw, color, size; step rate = per instance)
     ID3DBlob* cvs = compileShader(CREATURE_HLSL, "VSMain", "vs_5_0");
     ID3DBlob* cps = compileShader(CREATURE_HLSL, "PSMain", "ps_5_0");
     if (!cvs || !cps) { if(cvs)cvs->Release(); if(cps)cps->Release(); return false; }
@@ -147,7 +175,9 @@ bool Renderer::createShaders() {
     device->CreatePixelShader (cps->GetBufferPointer(), cps->GetBufferSize(), nullptr, &creaturePS);
 
     D3D11_INPUT_ELEMENT_DESC cd[] = {
+        // Slot 0 – per-vertex
         {"POSITION",  0, DXGI_FORMAT_R32G32_FLOAT,       0,  0, D3D11_INPUT_PER_VERTEX_DATA,   0},
+        // Slot 1 – per-instance (InstanceDataStepRate=1 means advance once per instance)
         {"INST_POS",  0, DXGI_FORMAT_R32G32B32_FLOAT,    1,  0, D3D11_INPUT_PER_INSTANCE_DATA, 1},
         {"INST_YAW",  0, DXGI_FORMAT_R32_FLOAT,          1, 12, D3D11_INPUT_PER_INSTANCE_DATA, 1},
         {"INST_COLOR",0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 16, D3D11_INPUT_PER_INSTANCE_DATA, 1},
@@ -160,20 +190,24 @@ bool Renderer::createShaders() {
 }
 
 bool Renderer::createBuffers(int w, int h) {
+    // Constant buffer: one per frame, written with D3D11_MAP_WRITE_DISCARD each frame
     D3D11_BUFFER_DESC bd{};
     bd.ByteWidth = sizeof(FrameConstants); bd.Usage = D3D11_USAGE_DYNAMIC;
     bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER; bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     if (FAILED(device->CreateBuffer(&bd, nullptr, &cbFrame))) {
         OutputDebugStringA("Error: Failed to create frame constant buffer!\n");
-        return false; // Stop initialization
+        return false;
     }
 
+    // Creature quad: four corners of a unit quad in [-0.5, 0.5].
+    // Laid out as a TRIANGLE_STRIP: (BL, BR, TL, TR).
     float quad[] = {-0.5f,-0.5f, 0.5f,-0.5f, -0.5f,0.5f, 0.5f,0.5f};
     bd.ByteWidth = sizeof(quad); bd.Usage = D3D11_USAGE_IMMUTABLE;
     bd.BindFlags = D3D11_BIND_VERTEX_BUFFER; bd.CPUAccessFlags = 0;
     D3D11_SUBRESOURCE_DATA sd{}; sd.pSysMem = quad;
     device->CreateBuffer(&bd, &sd, &creatureQuadVB);
 
+    // Instance buffer: sized for up to 4096 creatures; mapped and filled each frame
     bd.ByteWidth = (UINT)(sizeof(CreatureInstance) * 4096);
     bd.Usage = D3D11_USAGE_DYNAMIC; bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     device->CreateBuffer(&bd, nullptr, &creatureInstanceVB);
@@ -182,6 +216,8 @@ bool Renderer::createBuffers(int w, int h) {
 }
 
 bool Renderer::createDepthBuffer(int w, int h) {
+    // The depth buffer is a D32_FLOAT texture paired with a depth-stencil view.
+    // Must be recreated when the window is resized.
     safeRelease(depthTex); safeRelease(depthDSV);
     D3D11_TEXTURE2D_DESC td{};
     td.Width = (UINT)w; td.Height = (UINT)h; td.MipLevels = 1; td.ArraySize = 1;
@@ -194,7 +230,11 @@ bool Renderer::createDepthBuffer(int w, int h) {
 
 void Renderer::resize(int w, int h) { winW = w; winH = h; createDepthBuffer(w, h); }
 
-// ── Chunk mesh ────────────────────────────────────────────────────────────────
+// ── Chunk mesh builder ────────────────────────────────────────────────────────
+// Converts a terrain chunk's VoxelColumn grid into a triangle mesh stored in GPU
+// buffers (VB + IB). Each cell produces 2 triangles (a quad) with vertex-computed
+// normals and material-derived colours. Meshes are built lazily when the chunk is
+// marked dirty and cached for reuse until the chunk changes again.
 void Renderer::buildChunkMesh(const World& world, int cx, int cz) {
     int idx = cz * world.worldCX + cx;
     if ((int)chunkMeshes.size() <= idx) chunkMeshes.resize(world.worldCX * world.worldCZ);
@@ -211,6 +251,7 @@ void Renderer::buildChunkMesh(const World& world, int cx, int cz) {
 
     for (int lz = 0; lz < CHUNK_SIZE - 1; lz++) {
         for (int lx = 0; lx < CHUNK_SIZE - 1; lx++) {
+            // World-space X/Z bounds of this cell
             float wx0 = (float)(cx * CHUNK_SIZE + lx);
             float wx1 = wx0 + 1.f;
             float wz0 = (float)(cz * CHUNK_SIZE + lz);
@@ -218,12 +259,16 @@ void Renderer::buildChunkMesh(const World& world, int cx, int cz) {
 
             uint8_t mat = chunk->cells[lz][lx].material;
 
+            // Build one TerrainVertex at world position (wx, wz).
+            // Normal is computed via finite differences on the height field,
+            // giving a smooth approximation of the surface normal.
             auto makeVert = [&](float wx, float wz) -> TerrainVertex {
                 float h  = world.heightAt(wx, wz);
+                // Central differences: dh/dx and dh/dz with step 0.5
                 float dx = (world.heightAt(wx+0.5f,wz) - world.heightAt(wx-0.5f,wz));
                 float dz = (world.heightAt(wx,wz+0.5f) - world.heightAt(wx,wz-0.5f));
-                float slope = std::sqrt(dx*dx + dz*dz);
-                Float3 n = normalise3(-dx, 1.f, -dz);
+                float slope = std::sqrt(dx*dx + dz*dz);   // for materialColor
+                Float3 n = normalise3(-dx, 1.f, -dz);     // cross of (1,dh/dx,0) × (0,dh/dz,1)
                 float col[4]; materialColor(mat, slope, col);
                 TerrainVertex v;
                 v.pos[0]=wx; v.pos[1]=h;    v.pos[2]=wz;
@@ -232,17 +277,20 @@ void Renderer::buildChunkMesh(const World& world, int cx, int cz) {
                 return v;
             };
 
+            // Four vertices for the cell's quad (two triangles sharing the diagonal)
             uint32_t base = (uint32_t)verts.size();
-            verts.push_back(makeVert(wx0, wz0));
-            verts.push_back(makeVert(wx1, wz0));
-            verts.push_back(makeVert(wx0, wz1));
-            verts.push_back(makeVert(wx1, wz1));
+            verts.push_back(makeVert(wx0, wz0));   // TL
+            verts.push_back(makeVert(wx1, wz0));   // TR
+            verts.push_back(makeVert(wx0, wz1));   // BL
+            verts.push_back(makeVert(wx1, wz1));   // BR
+            // Triangle 1: TL→TR→BL, Triangle 2: TR→BR→BL
             idxs.push_back(base+0); idxs.push_back(base+1); idxs.push_back(base+2);
             idxs.push_back(base+1); idxs.push_back(base+3); idxs.push_back(base+2);
         }
     }
     if (verts.empty()) return;
 
+    // Upload to immutable GPU buffers (no CPU writes after this point)
     D3D11_BUFFER_DESC bd{}; D3D11_SUBRESOURCE_DATA sd{};
     bd.ByteWidth = (UINT)(verts.size() * sizeof(TerrainVertex));
     bd.Usage = D3D11_USAGE_IMMUTABLE; bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
@@ -256,11 +304,14 @@ void Renderer::buildChunkMesh(const World& world, int cx, int cz) {
     cm.idxCount = (int)idxs.size();
 }
 
-// ── Frame constants ───────────────────────────────────────────────────────────
+// ── Frame constants upload ────────────────────────────────────────────────────
+// Packs per-frame data (matrices, camera, lighting, fog) into the cbuffer.
+// The ViewProj matrix is transposed because HLSL expects column-major but our
+// Mat4 is row-major; transposing before upload is equivalent to toggling convention.
 void Renderer::updateFrameConstants(const World& world, float aspect) {
     Mat4 view = camera.viewMatrix();
     Mat4 proj = camera.projMatrix(aspect);
-    // Combine and transpose for HLSL row_major cbuffer
+    // Combine View and Proj, then transpose for HLSL's column-major row_major cbuffer
     Mat4 vp   = (view * proj).transposed();
 
     D3D11_MAPPED_SUBRESOURCE ms{};
@@ -271,6 +322,8 @@ void Renderer::updateFrameConstants(const World& world, float aspect) {
     fc->camPos[2] = camera.pos.z; fc->camPos[3] = 0.f;
     fc->lightDir[0]=0.4f; fc->lightDir[1]=-0.8f; fc->lightDir[2]=0.3f; fc->lightDir[3]=0.f;
 
+    // Fog-of-war: set the fog center to the possessed creature's position.
+    // The w component doubles as an enable flag: 0 = off, positive = fog radius.
     if (showFogOfWar && playerID != INVALID_ID) {
         auto it = world.idToIndex.find(playerID);
         if (it != world.idToIndex.end()) {
@@ -279,6 +332,7 @@ void Renderer::updateFrameConstants(const World& world, float aspect) {
             fc->fowCenter[2]=pc.pos.z; fc->fowCenter[3]=fogRadius;
         } else { fc->fowCenter[3]=0.f; }
     } else { fc->fowCenter[3]=0.f; }
+
     ctx->Unmap(cbFrame, 0);
     ctx->VSSetConstantBuffers(0, 1, &cbFrame);
     ctx->PSSetConstantBuffers(0, 1, &cbFrame);
@@ -286,6 +340,7 @@ void Renderer::updateFrameConstants(const World& world, float aspect) {
 
 // ── Render ────────────────────────────────────────────────────────────────────
 void Renderer::render(const World& world, float aspectRatio) {
+    // Rebuild dirty chunk meshes (lazy: only when the chunk's dirty flag is set)
     for (int cz = 0; cz < world.worldCZ; cz++) {
         for (int cx2 = 0; cx2 < world.worldCX; cx2++) {
             const Chunk& ch = world.chunks[cz * world.worldCX + cx2];
@@ -321,23 +376,29 @@ void Renderer::renderTerrain(const World& world) {
     }
 }
 
-// Genome hue (0-360) → RGB
+// Convert a genome hue [0,360] to an RGB colour via 6-sector HSV approximation.
+// Each 60-degree sector linearly interpolates between two primary/secondary colours.
+// Brightness is clamped to [0.3, 1.0] to keep creatures visible against dark terrain.
 static void hueToRGB(float hue, float out[3]) {
-    // 6 sectors, each 60°
+    // Six pure hues at 60° intervals: red, yellow, green, cyan, blue, magenta
     const float rgb6[6][3] = {
         {1.f,0.f,0.f},{1.f,1.f,0.f},{0.f,1.f,0.f},
         {0.f,1.f,1.f},{0.f,0.f,1.f},{1.f,0.f,1.f}
     };
     hue = std::fmod(hue, 360.f);
-    float sector = hue / 60.f;
-    int   hi = (int)sector % 6;
-    float f  = sector - (int)sector;
-    int   hi2 = (hi + 1) % 6;
+    float sector = hue / 60.f;     // which 60° segment we're in
+    int   hi = (int)sector % 6;    // start colour index
+    float f  = sector - (int)sector;  // fraction into this segment
+    int   hi2 = (hi + 1) % 6;     // end colour index
+    // Lerp between neighbouring pure hues, then rescale into the [0.3, 1.0] range
     for (int i = 0; i < 3; i++)
         out[i] = 0.3f + 0.7f * (rgb6[hi][i] * (1.f-f) + rgb6[hi2][i] * f);
 }
 
 void Renderer::renderCreatures(const World& world) {
+    // Map the instance buffer and fill one CreatureInstance per living creature.
+    // D3D11_MAP_WRITE_DISCARD discards previous contents; safe because the GPU
+    // won't read the buffer until the Map/Unmap pair is complete.
     D3D11_MAPPED_SUBRESOURCE ms{};
     ctx->Map(creatureInstanceVB, 0, D3D11_MAP_WRITE_DISCARD, 0, &ms);
     auto* inst = (CreatureInstance*)ms.pData;
@@ -345,6 +406,7 @@ void Renderer::renderCreatures(const World& world) {
     for (const auto& c : world.creatures) {
         if (!c.alive || count >= 4096) continue;
         float rgb[3]; hueToRGB(c.genome.hue(), rgb);
+        // Raise the billboard centre by half the body size so it sits on the terrain
         inst[count].pos[0] = c.pos.x;
         inst[count].pos[1] = c.pos.y + c.genome.bodySize() * 0.5f;
         inst[count].pos[2] = c.pos.z;
@@ -359,66 +421,68 @@ void Renderer::renderCreatures(const World& world) {
     if (count == 0) return;
 
     ctx->IASetInputLayout(creatureLayout);
-    ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+    ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP); // 4 verts → 2 triangles
     ctx->VSSetShader(creatureVS, nullptr, 0);
     ctx->PSSetShader(creaturePS, nullptr, 0);
     float bf[4]={};
-    ctx->OMSetBlendState(bsAlpha, bf, 0xFFFFFFFF);
+    ctx->OMSetBlendState(bsAlpha, bf, 0xFFFFFFFF);   // enable alpha blending for billboards
+    // Bind both vertex streams: stream 0 = quad verts, stream 1 = per-instance data
     UINT strides[2]={sizeof(float)*2, sizeof(CreatureInstance)}, offsets[2]={0,0};
     ID3D11Buffer* vbs[2]={creatureQuadVB, creatureInstanceVB};
     ctx->IASetVertexBuffers(0, 2, vbs, strides, offsets);
-    ctx->DrawInstanced(4, (UINT)count, 0, 0);
-    ctx->OMSetBlendState(nullptr, bf, 0xFFFFFFFF);
+    ctx->DrawInstanced(4, (UINT)count, 0, 0);  // 4 verts × count instances
+    ctx->OMSetBlendState(nullptr, bf, 0xFFFFFFFF);   // restore default (no blending)
 }
 
 // ── Camera movement ───────────────────────────────────────────────────────────
 void Renderer::tickCamera(float dt, const World& world) {
-    // --- POSSESS (FOLLOW) MODE ---
+    // POSSESS MODE: camera follows the player-controlled creature.
+    // Uses an exponential lerp (frame-rate-independent smooth damp) to glide
+    // behind and above the creature rather than snapping instantly.
     if (playerID != INVALID_ID) {
         auto it = world.idToIndex.find(playerID);
         if (it == world.idToIndex.end() || !world.creatures[it->second].alive) {
-            // Creature died or disappeared, release control
+            // Creature has died or been removed; release control
             playerID = INVALID_ID;
             return;
         }
 
         const Creature& creature = world.creatures[it->second];
 
-        // Calculate target camera position (behind and above the creature)
+        // Target position: follow_dist metres behind and above the creature
         float creatureForwardX = sin(creature.yaw);
         float creatureForwardZ = cos(creature.yaw);
-
         Float3 targetPos = {
             creature.pos.x - creatureForwardX * camera.follow_dist,
-            creature.pos.y + camera.follow_dist,
+            creature.pos.y + camera.follow_dist,      // always above terrain level
             creature.pos.z - creatureForwardZ * camera.follow_dist
         };
 
-        // Smoothly move camera towards the target position (lerp)
-        float blend = 1.0f - exp(-dt * camera.follow_speed); // Frame-rate independent lerp
+        // Exponential approach: blend = 1 - e^(-speed*dt) ensures consistent
+        // smoothing regardless of frame rate (unlike a fixed lerp factor)
+        float blend = 1.0f - exp(-dt * camera.follow_speed);
         camera.pos.x += (targetPos.x - camera.pos.x) * blend;
         camera.pos.y += (targetPos.y - camera.pos.y) * blend;
         camera.pos.z += (targetPos.z - camera.pos.z) * blend;
 
-        // Update yaw and pitch to look at the creature
-        Float3 lookDir = {
+        // Point camera toward the creature
+        Float3 lookDir = normalise3(
             creature.pos.x - camera.pos.x,
             creature.pos.y - camera.pos.y,
-            creature.pos.z - camera.pos.z
-        };
-        lookDir = normalise3(lookDir.x, lookDir.y, lookDir.z);
-
-        camera.yaw = atan2(lookDir.x, lookDir.z);
+            creature.pos.z - camera.pos.z);
+        camera.yaw   = atan2(lookDir.x, lookDir.z);
         camera.pitch = asin(lookDir.y);
     }
-    // --- FREE-LOOK MODE ---
+    // FREE-LOOK MODE: WASDQE keyboard movement in the camera's local frame
     else {
         float spd = camera.translation_speed * dt;
         Float3 f = camera.forward();
-        Float3 r = {f.z, 0.f, -f.x}; // Right vector
+        // Right vector: perpendicular to forward in the XZ plane (no vertical component)
+        Float3 r = {f.z, 0.f, -f.x};
         float rl = std::sqrt(r.x*r.x + r.z*r.z);
         if (rl > 1e-6f) { r.x/=rl; r.z/=rl; }
 
+        // moveKeys[]: W=fwd, R=back, S=left, A=right, D=up, F=down (see onKey)
         camera.pos.x += (f.x * (moveKeys[0]-moveKeys[1]) + r.x * (moveKeys[3]-moveKeys[2])) * spd;
         camera.pos.y += (moveKeys[4] - moveKeys[5]) * spd;
         camera.pos.z += (f.z * (moveKeys[0]-moveKeys[1]) + r.z * (moveKeys[3]-moveKeys[2])) * spd;
@@ -426,12 +490,15 @@ void Renderer::tickCamera(float dt, const World& world) {
 }
 
 void Renderer::onMouseMove(int dx, int dy, bool rightDown) {
-    if (!rightDown) return;
+    if (!rightDown) return;  // only rotate when right mouse button is held
     camera.yaw   += dx * 0.003f;
     camera.pitch += dy * 0.003f;
+    // Clamp pitch to prevent gimbal lock: can't look more than ~86° down or ~11° up
     camera.pitch  = std::max(-1.5f, std::min(0.2f, camera.pitch));
 }
 
+// Map virtual key codes to the moveKeys array used in tickCamera.
+// The array layout is: [0]=W(fwd) [1]=R(back) [2]=S(left) [3]=A(right) [4]=F(up) [5]=Q(down)
 void Renderer::onKey(int vk, bool down) {
     float v = down ? 1.f : 0.f;
     switch (vk) {

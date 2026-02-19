@@ -60,6 +60,9 @@ struct World {
     int       worldCX  = 16;   // chunks in X
     int       worldCZ  = 16;   // chunks in Z
 
+    int       initial_herbivores = 200;
+    int       initial_carnivores = initial_herbivores / 5;
+
     // ── Terrain ───────────────────────────────────────────────────────────────
     std::vector<Chunk> chunks;
 

@@ -137,7 +137,11 @@ int main(int, char**)
 
     // init() compiles HLSL shaders, creates GPU buffers, and builds the depth
     // buffer. Returns false on any D3D failure (e.g. driver doesn't support SM5).
-    if (!g_renderer.init(g_pd3dDevice, g_pd3dDeviceContext, winW, winH))
+    RECT initialRc; ::GetClientRect(hwnd, &initialRc);
+    int initW = initialRc.right  - initialRc.left;
+    int initH = initialRc.bottom - initialRc.top;
+
+    if (!g_renderer.init(g_pd3dDevice, g_pd3dDeviceContext, initW, initH))
     {
         OutputDebugStringA("FATAL: Renderer initialization failed!\n");
         CleanupDeviceD3D();
@@ -200,11 +204,15 @@ int main(int, char**)
         dt = std::min(dt, 0.05f);  // cap at 50 ms to prevent huge simulation steps
 
         // ── Update simulation and recording ────────────────────────────────
+
+        // Sync selectedID so renderer can draw FOV cone
+        g_renderer.selectedID = g_ui.selectedID;
+
         // tickCamera must run before render so the view matrix is fresh.
-        // World::tick() advances all creatures, plants, and reproduction.
-        // DataRecorder::tick() may or may not fire depending on its 1-Hz timer.
         g_renderer.tickCamera(dt, g_world);
+        // World::tick() advances all creatures, plants, and reproduction
         g_world.tick(dt);
+        // DataRecorder::tick() may or may not fire depending on its 1-Hz timer.
         g_recorder.tick(dt, g_world);
 
         // ── Clear render targets ───────────────────────────────────────────
@@ -247,6 +255,10 @@ int main(int, char**)
         // PassthruCentralNode = the 3D viewport shows through the empty central area.
         ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(),
             ImGuiDockNodeFlags_PassthruCentralNode);
+
+        // Pass window dimensions to UI so it can do terrain hover raycasting
+        g_ui.windowW = (int)vp.Width;
+        g_ui.windowH = (int)vp.Height;
 
         // Draw all simulation UI panels (controls, inspector, charts, species, etc.)
         g_ui.draw(g_world, g_recorder, g_renderer);
@@ -311,7 +323,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
     // so we don't move the camera while the user types in a file path etc.
     case WM_KEYDOWN:
     case WM_KEYUP:
-        if (!ImGui::GetIO().WantCaptureKeyboard)
+        if (!ImGui::GetIO().WantCaptureKeyboard) {
             g_renderer.onKey((int)wParam, msg == WM_KEYDOWN);
 
             // ── Space bar: toggle pause ──────────────────────────────────────

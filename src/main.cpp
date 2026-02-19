@@ -313,6 +313,11 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
     case WM_KEYUP:
         if (!ImGui::GetIO().WantCaptureKeyboard)
             g_renderer.onKey((int)wParam, msg == WM_KEYDOWN);
+
+            // ── Space bar: toggle pause ──────────────────────────────────────
+            if (msg == WM_KEYDOWN && wParam == VK_SPACE)
+                g_world.cfg.paused = !g_world.cfg.paused;
+        }
         return 0;
 
     // Capture/release the mouse on right-click so we can read WM_MOUSEMOVE

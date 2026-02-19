@@ -92,7 +92,9 @@ int main(int, char**)
         ::UnregisterClassW(wc.lpszClassName, wc.hInstance);
         return 1;
     }
-    ::ShowWindow(hwnd, SW_SHOWDEFAULT);
+
+    // ── Start maximised ───────────────────────────────────────────────────────
+    ::ShowWindow(hwnd, SW_SHOWMAXIMIZED);
     ::UpdateWindow(hwnd);
 
     // ── Dear ImGui + ImPlot setup ─────────────────────────────────────────────

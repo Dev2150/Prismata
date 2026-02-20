@@ -8,6 +8,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(SOURCES
         src/main.cpp
         src/App.cpp
+        src/App_Globals.cpp
+        src/App_D3D.cpp
+        src/App_WndProc.cpp
         src/World.cpp
         src/Renderer/Renderer_Camera.cpp
         src/Renderer/Renderer_Creatures.cpp

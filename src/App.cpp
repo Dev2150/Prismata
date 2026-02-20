@@ -1,68 +1,13 @@
-// Prismata – Evolution Simulation
-// ─────────────────────────────────────────────────────────────────────────────
-// Responsibilities:
-//   1. Create and manage the Win32 window and D3D11 device/swap chain
-//   2. Initialise Dear ImGui + ImPlot for the UI layer
-//   3. Run the main loop: poll messages → tick sim → render 3D → render UI → present
-//   4. Forward input events to the renderer (camera) and UI (creature selection)
-//
-// Architecture overview:
-//   World      – simulation state (terrain, creatures, plants, species)
-//   Renderer   – D3D11 rendering of terrain + creature billboards + camera
-//   DataRecorder – 1-Hz population statistics ring buffer (feeds ImPlot graphs)
-//   SimUI      – all Dear ImGui panels (controls, inspector, charts, etc.)
-// ─────────────────────────────────────────────────────────────────────────────
 #include "App.hpp"
+#include "App_Globals.hpp"
 #include "imgui.hpp"
 #include "imgui_impl_win32.hpp"
 #include "imgui_impl_dx11.hpp"
 #include "implot.hpp"
-#include <d3d11.h>
-#include <tchar.h>
 #include <chrono>
 #include <algorithm>
 #include <cmath>
 
-#include "World.hpp"
-#include "Renderer/Renderer.hpp"
-#include "DataRecorder.hpp"
-#include "SimUI.hpp"
-#include "Math.hpp"
-
-// ── Forward declarations ──────────────────────────────────────────────────────
-static bool    CreateDeviceD3D(HWND hWnd);
-static void    CleanupDeviceD3D();
-static void    CreateRenderTarget();
-static void    CleanupRenderTarget();
-extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
-static LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-
-// ── D3D11 globals ─────────────────────────────────────────────────────────────
-// Kept as file-scope statics so helper functions (CreateDeviceD3D, WndProc, etc.)
-// can access them without passing them around everywhere.
-static ID3D11Device*           g_pd3dDevice          = nullptr;  // logical GPU interface; used to create resources (buffers, shaders, states)
-static ID3D11DeviceContext*    g_pd3dDeviceContext    = nullptr;  // records and submits draw calls / state changes
-static IDXGISwapChain*         g_pSwapChain           = nullptr;  // manages front/back buffers and Present()
-static bool                    g_SwapChainOccluded    = false;    // true when the window is minimised/covered; we skip rendering
-static UINT                    g_ResizeWidth          = 0;        // pending resize dimensions written in WM_SIZE,
-static UINT                    g_ResizeHeight         = 0;        //   applied at the start of the next frame to avoid mid-frame resize
-static ID3D11RenderTargetView* g_mainRenderTargetView = nullptr;  // view into the swap chain's back buffer; bound as the output render target
-
-// ── Simulation globals ────────────────────────────────────────────────────────
-// All four objects live for the entire duration of the program.
-static World        g_world;     // terrain + creatures + plants + species registry
-static DataRecorder g_recorder;  // samples population statistics at 1 Hz for graphing
-static Renderer     g_renderer;  // D3D11 draw calls, camera, chunk mesh cache
-static SimUI        g_ui;        // all ImGui panels; owns selectedID / showDemoWindow etc.
-
-// ── Forward declarations ──────────────────────────────────────────────────────
-bool    CreateDeviceD3D(HWND hWnd);
-void    CleanupDeviceD3D();
-void    CreateRenderTarget();
-void    CleanupRenderTarget();
-LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-
-// ── main ──────────────────────────────────────────────────────────────────────
 int RunApplication()
 {
     // Make the process DPI-aware so the window and fonts render sharply on
@@ -71,7 +16,7 @@ int RunApplication()
 
     // Query the DPI scale of the primary monitor so we can scale the window
     // size and ImGui style dimensions to match (e.g. 1.5 on a 144-DPI screen)
-    float main_scale = ImGui_ImplWin32_GetDpiScaleForMonitor(
+    float dpi = ImGui_ImplWin32_GetDpiScaleForMonitor(
         ::MonitorFromPoint(POINT{0,0}, MONITOR_DEFAULTTOPRIMARY));
 
     // ── Win32 window creation ─────────────────────────────────────────────────
@@ -88,7 +33,7 @@ int RunApplication()
     ::RegisterClassExW(&wc);
 
     // Scale the logical 1600×900 design size by the DPI factor
-    int winW = (int)(1600 * main_scale), winH = (int)(900 * main_scale);
+    int winW = (int)(1600 * dpi), winH = (int)(900 * dpi);
     HWND hwnd = ::CreateWindowW(
         wc.lpszClassName, L"Prismata – Evolution Simulation",
         WS_OVERLAPPEDWINDOW,   // standard resizable/minimisable/maximisable window
@@ -123,8 +68,8 @@ int RunApplication()
     // Scale all ImGui padding, rounding, and spacing by the DPI factor so the
     // UI looks the same physical size on all monitors
     ImGuiStyle& style = ImGui::GetStyle();
-    style.ScaleAllSizes(main_scale);
-    style.FontScaleDpi = main_scale;
+    style.ScaleAllSizes(dpi);
+    style.FontScaleDpi = dpi;
     io.ConfigDpiScaleFonts     = true;
     io.ConfigDpiScaleViewports = true;
 
@@ -232,8 +177,8 @@ int RunApplication()
         // Matches the ambient/sun colours computed in Renderer_Frame.cpp so the
         // horizon blends naturally into the background.
         {
-            float tod = g_world.timeOfDay();   // [0,1)
-            float elev = -std::cos(tod * 2.f * 3.14159265f); // -1=night, +1=noon
+            float time_of_day = g_world.timeOfDay();   // [0,1)
+            float elev = -std::cos(time_of_day * 2.f * 3.14159265f); // -1=night, +1=noon
 
             // Night sky colour
             float skyNight[3]   = {0.01f, 0.01f, 0.04f};
@@ -333,230 +278,3 @@ int RunApplication()
     return 0;
 }
 
-// ── WndProc ───────────────────────────────────────────────────────────────────
-// Win32 window procedure: receives all window messages for our HWND.
-// ImGui_ImplWin32_WndProcHandler is called first; it returns true if ImGui
-// consumed the message (e.g. a mouse click on an ImGui panel) so we don't
-// also process it as a game input.
-static LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
-{
-    if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam)) return true;
-
-    switch (msg) {
-
-    // WM_SIZE fires whenever the window is resized (including minimise/restore).
-    // We defer the actual buffer resize to the main loop (see step 3 above)
-    // because we can't safely resize D3D resources from inside WndProc.
-    case WM_SIZE:
-        if (wParam == SIZE_MINIMIZED) return 0;  // ignore minimise (width/height = 0)
-        g_ResizeWidth  = LOWORD(lParam);
-        g_ResizeHeight = HIWORD(lParam);
-        return 0;
-
-    // Forward keyboard events to the renderer for camera movement.
-    // WantCaptureKeyboard is true when ImGui has a text field focused,
-    // so we don't move the camera while the user types in a file path etc.
-    case WM_KEYDOWN:
-    case WM_KEYUP:
-        if (!ImGui::GetIO().WantCaptureKeyboard) {
-            g_renderer.onKey((int)wParam, msg == WM_KEYDOWN);
-
-            // ── Space bar: toggle pause ──────────────────────────────────────
-            if (msg == WM_KEYDOWN && wParam == VK_SPACE)
-                g_world.cfg.paused = !g_world.cfg.paused;
-
-            // ── +/= key or numpad +: increase simulation speed ───────────────
-            if (msg == WM_KEYDOWN && (wParam == VK_OEM_PLUS || wParam == VK_ADD)) {
-                g_world.cfg.simSpeed = std::min(20.f, g_world.cfg.simSpeed * 1.25f);
-            }
-            // ── - key or numpad -: decrease simulation speed ─────────────────
-            if (msg == WM_KEYDOWN && (wParam == VK_OEM_MINUS || wParam == VK_SUBTRACT)) {
-                g_world.cfg.simSpeed = std::max(0.1f, g_world.cfg.simSpeed / 1.25f);
-            }
-        }
-        return 0;
-
-    // Capture/release the mouse on right-click so we can read WM_MOUSEMOVE
-    // delta even when the cursor leaves the window boundary during a drag.
-    case WM_RBUTTONDOWN: SetCapture(hWnd);  return 0;
-    case WM_RBUTTONUP:   ReleaseCapture();  return 0;
-
-    // Mouse movement: compute delta from the previous position and forward to
-    // the renderer for camera yaw/pitch when right-button is held.
-    // Static variables persist across calls to track the last known position.
-    case WM_MOUSEMOVE: {
-        static int lastMX = 0, lastMY = 0;
-        int mx = (short)LOWORD(lParam), my = (short)HIWORD(lParam);
-        if (!ImGui::GetIO().WantCaptureMouse)
-            g_renderer.onMouseMove(mx - lastMX, my - lastMY, (wParam & MK_RBUTTON) != 0);
-        lastMX = mx; lastMY = my;
-        return 0;
-    }
-
-    // ── Ray-picking: select a creature by left-clicking on the viewport ───────
-    // Converts the 2D screen click into a 3D world-space ray, then finds the
-    // living creature whose position is closest to that ray (within 3 m).
-    case WM_LBUTTONDOWN: {
-        if (ImGui::GetIO().WantCaptureMouse) break;  // click was on an ImGui panel
-
-        RECT rc; ::GetClientRect(hWnd, &rc);
-        float W = (float)(rc.right - rc.left);
-        float H = (float)(rc.bottom - rc.top);
-        float mx = (float)(short)LOWORD(lParam);
-        float my = (float)(short)HIWORD(lParam);
-
-        // Convert pixel coordinates to Normalised Device Coordinates (NDC):
-        //   NDC X: -1 (left edge) to +1 (right edge)
-        //   NDC Y: +1 (top edge)  to -1 (bottom edge)  ← note Y flip
-        float ndcX =  (mx / W) * 2.f - 1.f;
-        float ndcY = -(my / H) * 2.f + 1.f;
-
-        // Compute the inverse of the combined View×Projection matrix.
-        // This lets us unproject from clip space back to world space.
-        Mat4 vp    = g_renderer.camera.viewMatrix() * g_renderer.camera.projMatrix(W / H);
-        Mat4 vpInv = vp.inversed();
-
-        // Unproject two points at different clip-space depths:
-        //   z=0 → near plane in NDC (maps to the near clip plane in world space)
-        //   z=1 → far plane in NDC  (maps to the far clip plane in world space)
-        // Together they define the start and end of the pick ray.
-        auto unproject = [&](float z) -> Vec4 {
-            Vec4 clip = {ndcX, ndcY, z, 1.f};
-            Vec4 world = vpInv.transform(clip);
-            // Perspective divide: divide XYZ by W to convert from homogeneous
-            // coordinates back to Cartesian world-space coordinates
-            float invW = (std::abs(world.w) > 1e-7f) ? 1.f / world.w : 0.f;
-            return {world.x * invW, world.y * invW, world.z * invW, 1.f};
-        };
-
-        Vec4 near4 = unproject(0.f);
-        Vec4 far4  = unproject(1.f);
-
-        // Normalise the ray direction vector
-        float dx = far4.x - near4.x, dy = far4.y - near4.y, dz = far4.z - near4.z;
-        float dl = std::sqrt(dx*dx + dy*dy + dz*dz);
-        if (dl < 1e-6f) break;
-        dx /= dl; dy /= dl; dz /= dl;
-
-        // Find the living creature whose position is within 3 m of the ray.
-        // For each creature, compute the perpendicular distance from its centre
-        // to the ray using the formula: d = |OC - (OC·d)d| where OC is the
-        // vector from the ray origin to the creature centre and d is the ray direction.
-        float    bestDist = 3.f;   // selection radius: 3 m from the ray
-        EntityID bestID   = INVALID_ID;
-        for (const auto& c : g_world.creatures) {
-            if (!c.alive) continue;
-            // Vector from ray origin (near4) to creature centre
-            float ocx = c.pos.x - near4.x, ocy = c.pos.y - near4.y, ocz = c.pos.z - near4.z;
-            // Scalar projection of OC onto the ray direction (how far along the ray)
-            float t   = ocx*dx + ocy*dy + ocz*dz;
-            if (t < 0.f) continue;  // creature is behind the camera
-            // Closest point on ray to creature centre
-            float cx2 = near4.x + dx*t - c.pos.x;
-            float cy2 = near4.y + dy*t - c.pos.y;
-            float cz2 = near4.z + dz*t - c.pos.z;
-            float d   = std::sqrt(cx2*cx2 + cy2*cy2 + cz2*cz2);  // perpendicular distance
-            if (d < bestDist) { bestDist = d; bestID = c.id; }
-        }
-        // Store the selected creature ID in the UI; the inspector panel reads this
-        g_ui.selectedID = bestID;
-        return 0;
-    }
-
-    // WM_CHAR is better than WM_KEYDOWN for single-press actions because it
-    // fires once per key press (WM_KEYDOWN repeats while held).
-    case WM_CHAR:
-        // ── possess a random living creature ─────────────────────────────
-        if (wParam == 'p' || wParam == 'P') {
-            if (!ImGui::GetIO().WantCaptureKeyboard) {
-                EntityID randomID = g_world.findRandomLivingCreature();
-                if (randomID != INVALID_ID) {
-                    g_renderer.playerID = randomID;  // camera follows this creature
-                    g_ui.selectedID = randomID;      // also select it in the inspector
-                }
-            }
-        }
-        return 0;
-
-    // Suppress the default Alt+Enter full-screen toggle that DXGI would otherwise
-    // intercept. We don't support full-screen so this prevents a broken state.
-    case WM_SYSCOMMAND:
-        if ((wParam & 0xfff0) == SC_KEYMENU) return 0;
-        break;
-
-    case WM_DESTROY:
-        ::PostQuitMessage(0);  // posts WM_QUIT to the message queue, causing the main loop to exit
-        return 0;
-    }
-    return ::DefWindowProcW(hWnd, msg, wParam, lParam);
-}
-
-// ── D3D11 device and swap chain creation ──────────────────────────────────────
-// Attempts hardware acceleration first; falls back to WARP (software rasteriser)
-// if no compatible GPU is present. WARP is slow but correct, useful for CI/VMs.
-static bool CreateDeviceD3D(HWND hWnd) {
-    DXGI_SWAP_CHAIN_DESC sd{};
-    sd.BufferCount                        = 2; // double-buffering (front + back)
-    sd.BufferDesc.Format                  = DXGI_FORMAT_R8G8B8A8_UNORM;  // standard 8-bit RGBA back buffer
-    sd.BufferDesc.RefreshRate.Numerator   = 60;
-    sd.BufferDesc.RefreshRate.Denominator = 1;
-    sd.Flags        = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;  // allow full-screen toggle
-    sd.BufferUsage  = DXGI_USAGE_RENDER_TARGET_OUTPUT;         // back buffer is a render target
-    sd.OutputWindow = hWnd;
-    sd.SampleDesc.Count = 1;    // no MSAA (anti-aliasing handled by billboards + terrain mesh density)
-    sd.Windowed     = TRUE;
-    sd.SwapEffect   = DXGI_SWAP_EFFECT_DISCARD;  // discard back buffer contents after present (fastest)
-
-    UINT createDeviceFlags = 0;
-#ifdef _DEBUG
-    createDeviceFlags |= D3D11_CREATE_DEVICE_DEBUG;  // enable D3D validation layer in debug builds
-#endif
-
-    // Try hardware (GPU) first; fall back to WARP software rasteriser if it fails
-    D3D_FEATURE_LEVEL fl;
-    const D3D_FEATURE_LEVEL fla[] = {D3D_FEATURE_LEVEL_11_0};
-    HRESULT hr = D3D11CreateDeviceAndSwapChain(
-        nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr,
-        createDeviceFlags, fla, 1, D3D11_SDK_VERSION,
-        &sd, &g_pSwapChain, &g_pd3dDevice, &fl, &g_pd3dDeviceContext);
-    if (FAILED(hr))
-        hr = D3D11CreateDeviceAndSwapChain(
-            nullptr, D3D_DRIVER_TYPE_WARP, nullptr,
-            createDeviceFlags, fla, 1, D3D11_SDK_VERSION,
-            &sd, &g_pSwapChain, &g_pd3dDevice, &fl, &g_pd3dDeviceContext);
-    if (FAILED(hr)) return false;
-
-    // Disable DXGI's built-in Alt+Enter full-screen handling (we manage this ourselves)
-    IDXGIFactory* f;
-    if (SUCCEEDED(g_pSwapChain->GetParent(IID_PPV_ARGS(&f)))) {
-        f->MakeWindowAssociation(hWnd, DXGI_MWA_NO_ALT_ENTER);
-        f->Release();
-    }
-
-    CreateRenderTarget();
-    return true;
-}
-
-static void CleanupDeviceD3D()
-{
-    CleanupRenderTarget();
-    if (g_pSwapChain)        { g_pSwapChain->Release();        g_pSwapChain=nullptr; }
-    if (g_pd3dDeviceContext) { g_pd3dDeviceContext->Release(); g_pd3dDeviceContext=nullptr; }
-    if (g_pd3dDevice)        { g_pd3dDevice->Release();        g_pd3dDevice=nullptr; }
-}
-
-// Obtain a Render Target View (RTV) from the swap chain's back buffer texture.
-// An RTV is what you bind to OMSetRenderTargets; it tells D3D which texture to write to.
-void CreateRenderTarget() {
-    ID3D11Texture2D* buf;
-    g_pSwapChain->GetBuffer(0, IID_PPV_ARGS(&buf));  // index 0 = back buffer
-    g_pd3dDevice->CreateRenderTargetView(buf, nullptr, &g_mainRenderTargetView);
-    buf->Release();  // RTV holds its own reference; we can release ours
-}
-
-static void CleanupRenderTarget()
-{
-    if (g_mainRenderTargetView) {
-        g_mainRenderTargetView->Release(); g_mainRenderTargetView=nullptr;
-    }
-}

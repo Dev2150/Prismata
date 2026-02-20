@@ -48,7 +48,7 @@ struct Creature {
     float   energy      = 100.f;  // Current energy; drops to 0 → death
     float   maxEnergy   = 150.f;  // Cap; scales with body size so large creatures store more
     float   age         = 0.f;    // Seconds since spawn
-    float   lifespan    = 180.f;  // Seconds until old-age death; randomised at birth
+    float   lifespan    = 600.f;  // Seconds until old-age death; randomised at birth
     float   mass        = 1.f;    // Derived from bodySize gene; scales energy costs
     bool    alive       = true;   // Set to false to mark for removal next tick
 
@@ -78,7 +78,7 @@ struct Creature {
         mass     = genome.bodySize();
         maxEnergy= 80.f + mass * 40.f;       // larger body → bigger energy tank
         energy   = maxEnergy * 0.7f;          // start at 70% so newborns still need food
-        lifespan = 120.f + globalRNG().normal(0.f, 20.f);  // add randomness to lifespan
+        lifespan = 600.f + globalRNG().normal(0.f, 20.f);  // add randomness to lifespan
         needs.initFromGenome(genome);
     }
 

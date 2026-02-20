@@ -9,6 +9,33 @@
 #include <string>
 #include <cmath>
 
+// ── Helper: format simTime as "Day D  HH:MM" ─────────────────────────────────
+// One in-game day = World::DAY_DURATION simulated seconds.
+// Returns a human-readable string: "Day 1  06:30" etc.
+static std::string formatGameTime(float simTime) {
+    float dayDur  = World::DAY_DURATION;              // 300 s per day
+    int   day     = (int)(simTime / dayDur) + 1;      // 1-based day counter
+    float inDay   = std::fmod(simTime, dayDur);       // seconds elapsed this day
+    float dayFrac = inDay / dayDur;                   // [0,1) fraction of day
+
+    int hour = (int)(dayFrac * 24.f);
+    int min  = (int)(std::fmod(dayFrac * 24.f, 1.f) * 60.f);
+
+    char buf[64];
+    std::snprintf(buf, sizeof(buf), "Day %-3d  %02d:%02d", day, hour, min);
+    return buf;
+}
+
+// ── Optionally add a small moon/sun icon based on time ────────────────────────
+// Returns a UTF-8 icon character for the current time-of-day period.
+static const char* timeIcon(float timeOfDay) {
+    if (timeOfDay < 0.1f || timeOfDay > 0.9f) return "🌙"; // midnight
+    if (timeOfDay < 0.3f)                      return "🌅"; // dawn
+    if (timeOfDay < 0.7f)                      return "☀";  // day
+    return "🌇";                                             // dusk
+}
+
+
 // Helper: hue → ImVec4 colour
 static ImVec4 hueColor(float hue, float alpha = 1.f) {
     float h = hue / 60.f;
@@ -131,8 +158,12 @@ void SimUI::drawMainMenuBar(World& world, DataRecorder& rec, Renderer& rend) {
     else
         ImGui::Text("  ▶");
 
-    ImGui::Text("  |  t=%.1fs  Pop=%d  Species=%d",
-        world.simTime,
+    // ── In-game time display ──────────────────────────────────────────────────
+    std::string gt = formatGameTime(world.simTime);
+    ImGui::Text("  |  %s  %s", gt.c_str(), timeIcon(world.timeOfDay()));
+
+    // ── Simulation stats ──────────────────────────────────────────────────────
+    ImGui::Text("  |  Pop=%d  Species=%d",
         (int)world.creatures.size(),
         (int)std::count_if(world.species.begin(), world.species.end(),
                            [](const SpeciesInfo& s){ return s.count > 0; }));
@@ -155,6 +186,36 @@ void SimUI::drawSimControls(World& world, Renderer& rend) {
 
     ImGui::Separator();
 
+    // ── In-game time ──────────────────────────────────────────────────────────
+    {
+        float dayDur   = World::DAY_DURATION;
+        float inDay    = std::fmod(world.simTime, dayDur);
+        float progress = inDay / dayDur;           // fraction through current day
+
+        // Time label
+        std::string gt = formatGameTime(world.simTime);
+        ImGui::Text("%s %s", timeIcon(world.timeOfDay()), gt.c_str());
+
+        // Progress bar showing position within the current day
+        // Colour shifts from dark blue (night) → orange (dawn) → white (day) → orange (dusk)
+        float t = world.timeOfDay();
+        float r, g, b;
+        if      (t < 0.25f) { float f=t/0.25f;      r=f*1.f;      g=f*0.45f;  b=0.12f+f*0.5f; } // dawn
+        else if (t < 0.50f) { float f=(t-0.25f)/0.25f; r=1.f;     g=0.45f+f*0.5f; b=0.62f+f*0.18f; } // morning
+        else if (t < 0.75f) { float f=(t-0.50f)/0.25f; r=1.f-f*0.f; g=0.95f;  b=0.80f-f*0.68f; } // afternoon
+        else                 { float f=(t-0.75f)/0.25f; r=1.f-f;   g=0.95f-f*0.9f; b=0.12f-f*0.09f; } // dusk→night
+
+        ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImVec4(r, g, b, 1.f));
+        char overlay[32];
+        int h=(int)(t*24), m=(int)(std::fmod(t*24,1.f)*60);
+        std::snprintf(overlay, sizeof(overlay), "%02d:%02d", h, m);
+        ImGui::ProgressBar(progress, ImVec2(-1, 8), overlay);
+        ImGui::PopStyleColor();
+
+        ImGui::TextDisabled("1 day = 5 real minutes  (×%.1f speed)", world.cfg.simSpeed);
+    }
+
+    ImGui::Separator();
     ImGui::SliderFloat("Sim Speed",     &world.cfg.simSpeed,     0.1f, 20.f);
     ImGui::SliderFloat("Mutation Scale",&world.cfg.mutationRateScale, 0.1f, 5.f);
     ImGui::SliderFloat("Species ε",     &world.cfg.speciesEpsilon,   0.05f, 0.5f);

@@ -134,11 +134,11 @@ struct Renderer {
     Float3   fowCenter    = {};
     EntityID playerID     = INVALID_ID;
 
-    // ── New rendering features ────────────────────────────────────────────────
+    // ── Rendering features ────────────────────────────────────────────────
     EntityID selectedID   = INVALID_ID;  // creature whose FOV cone to draw
     bool     showFOVCone  = true;        // toggle FOV cone overlay
     bool     showWater    = true;        // toggle water plane
-    float    waterLevel   = 0.45f;       // Y-height of the water plane
+    float    waterLevel   = 5.f;       // Y-height of the water plane
     bool     lockYawFollow= false;       // when true, following a creature won't rotate the camera
 
     // ── Creature possession: translation-only follow ───────────────────────────

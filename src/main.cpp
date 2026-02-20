@@ -149,6 +149,10 @@ int main(int, char**)
         return 1;
     }
 
+    // ── Auto-load default settings ────────────────────────────────────────────
+    // Attempt to load "default.json" on startup; silently ignore if missing.
+    g_ui.loadSettingsFromFile("default.json", g_world, g_renderer);
+
     // ── Main loop ─────────────────────────────────────────────────────────────
     // Uses std::chrono::high_resolution_clock for sub-millisecond frame timing.
     // dt is capped at 50 ms (20 FPS minimum) to prevent the simulation from

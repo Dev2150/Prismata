@@ -48,7 +48,9 @@ static ImVec4 hueColor(float hue, float alpha = 1.f) {
 
 // ── Top-level draw ────────────────────────────────────────────────────────────
 void SimUI::draw(World& world, DataRecorder& rec, Renderer& rend) {
-    // Update hover each frame before drawing anything
+    // Sync water level for tooltip underwater detection
+    terrainWaterLevel = rend.waterLevel;
+
     updateTerrainHover(rend, world);
 
     drawMainMenuBar(world, rec, rend);
@@ -110,7 +112,23 @@ void SimUI::drawTerrainHoverTooltip() {
     };
     uint8_t m = std::min(terrainHitMat, (uint8_t)4);
     ImGui::TextColored(matColors[m], "  %s", World::materialName(terrainHitMat));
+
+    // ── Underwater indicator ──────────────────────────────────────────────────
+    // Show a teal "underwater" badge when the terrain surface is below the
+    // renderer's water plane, but hasn't been classified as a water tile itself.
+    bool isUnderwater = (terrainHitPos.y < terrainWaterLevel) && (terrainHitMat != 3);
+    if (isUnderwater) {
+        ImGui::SameLine();
+        ImGui::TextColored({0.2f, 0.7f, 1.0f, 1.f}, "🌊 Underwater");
+    } else if (terrainHitMat == 3) {
+        ImGui::SameLine();
+        ImGui::TextColored({0.2f, 0.6f, 1.0f, 1.f}, "🌊 Water");
+    }
+
     ImGui::Text("Height : %.2f m", terrainHitPos.y);
+    if (isUnderwater)
+        ImGui::TextColored({0.3f, 0.8f, 1.f, 0.9f},
+            "Depth  : %.2f m", terrainWaterLevel - terrainHitPos.y);
     ImGui::Text("Pos    : (%.1f, %.1f)", terrainHitPos.x, terrainHitPos.z);
 
     ImGui::End();
@@ -168,6 +186,9 @@ void SimUI::drawMainMenuBar(World& world, DataRecorder& rec, Renderer& rend) {
         (int)std::count_if(world.species.begin(), world.species.end(),
                            [](const SpeciesInfo& s){ return s.count > 0; }));
 
+    // ── Sim speed indicator ───────────────────────────────────────────────────
+    ImGui::TextColored({0.6f,1.f,0.6f,1.f}, "  |  ×%.1f  (-/+)", world.cfg.simSpeed);
+
     ImGui::EndMainMenuBar();
 }
 
@@ -212,11 +233,13 @@ void SimUI::drawSimControls(World& world, Renderer& rend) {
         ImGui::ProgressBar(progress, ImVec2(-1, 8), overlay);
         ImGui::PopStyleColor();
 
-        ImGui::TextDisabled("1 day = 5 real minutes  (×%.1f speed)", world.cfg.simSpeed);
+        ImGui::TextDisabled("1 day = %.0f real seconds  (×%.1f speed)",
+            World::DAY_DURATION, world.cfg.simSpeed);
     }
 
     ImGui::Separator();
     ImGui::SliderFloat("Sim Speed",     &world.cfg.simSpeed,     0.1f, 20.f);
+    ImGui::TextDisabled("(- / + keys to adjust)");
     ImGui::SliderFloat("Mutation Scale",&world.cfg.mutationRateScale, 0.1f, 5.f);
     ImGui::SliderFloat("Species ε",     &world.cfg.speciesEpsilon,   0.05f, 0.5f);
     ImGui::SliderFloat("Plant Grow Rate",&world.cfg.plantGrowRate,   0.f, 5.f);
@@ -294,8 +317,41 @@ void SimUI::drawEntityInspector(const World& world) {
                 c.id, c.generation, sp ? sp->name.c_str() : "?");
             ImGui::Text("Diet: %s",
                 c.isHerbivore() ? "Herbivore" : c.isCarnivore() ? "Carnivore" : "Omnivore");
-            ImGui::Text("Age: %.1f / %.1f s   Energy: %.1f / %.1f",
-                c.age, c.lifespan, c.energy, c.maxEnergy);
+
+            // ── Age as a progress bar ─────────────────────────────────────────
+            // The bar fills from left (newborn) to right (lifespan reached).
+            // Colour shifts green → yellow → red as the creature ages.
+            ImGui::Separator();
+            {
+                float ageFrac = std::min(c.age / c.lifespan, 1.f);
+                ImVec4 ageCol;
+                if      (ageFrac < 0.4f) ageCol = {0.2f, 0.85f, 0.2f, 1.f};  // young: green
+                else if (ageFrac < 0.75f) ageCol = {0.9f, 0.75f, 0.1f, 1.f};  // middle: yellow
+                else                      ageCol = {1.0f, 0.25f, 0.15f, 1.f};  // old: red
+
+                char ageBuf[48];
+                std::snprintf(ageBuf, sizeof(ageBuf), "%.0f / %.0f s", c.age, c.lifespan);
+
+                ImGui::Text("Age:");
+                ImGui::SameLine();
+                ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ageCol);
+                ImGui::ProgressBar(ageFrac, ImVec2(-1.f, 0.f), ageBuf);
+                ImGui::PopStyleColor();
+            }
+
+            // ── Energy bar ────────────────────────────────────────────────────
+            {
+                float eFrac = std::min(c.energy / c.maxEnergy, 1.f);
+                ImVec4 eCol = {1.f - eFrac, eFrac * 0.8f, 0.1f, 1.f};
+                char eBuf[48];
+                std::snprintf(eBuf, sizeof(eBuf), "%.1f / %.1f", c.energy, c.maxEnergy);
+                ImGui::Text("Energy:");
+                ImGui::SameLine();
+                ImGui::PushStyleColor(ImGuiCol_PlotHistogram, eCol);
+                ImGui::ProgressBar(eFrac, ImVec2(-1.f, 0.f), eBuf);
+                ImGui::PopStyleColor();
+            }
+
             ImGui::Text("Pos: (%.1f, %.1f, %.1f)  Speed: %.2f m/s",
                 c.pos.x, c.pos.y, c.pos.z, c.vel.len());
 
@@ -496,6 +552,7 @@ void SimUI::drawSettingsWindow(World& world, Renderer& rend) {
 
     ImGui::SeparatorText("Simulation");
     ImGui::SliderFloat("Sim Speed##s",          &world.cfg.simSpeed,           0.1f, 20.f);
+    ImGui::TextDisabled("(- / + keys also adjust speed)");
     ImGui::SliderFloat("Mutation Rate Scale##s",&world.cfg.mutationRateScale,  0.1f,  5.f);
     ImGui::SliderFloat("Species Epsilon##s",    &world.cfg.speciesEpsilon,     0.05f, 0.5f);
     if (ImGui::IsItemHovered())
@@ -527,6 +584,7 @@ void SimUI::drawSettingsWindow(World& world, Renderer& rend) {
 
     ImGui::SeparatorText("Hotkeys");
     ImGui::TextDisabled("Space    – Pause / Resume");
+    ImGui::TextDisabled("- / +    – Decrease / Increase sim speed (±0.5×)");
     ImGui::TextDisabled("P        – Possess random creature");
     ImGui::TextDisabled("RMB drag – Rotate camera");
     ImGui::TextDisabled("W/S/A/R  – Move camera (fwd/back/left/right)");

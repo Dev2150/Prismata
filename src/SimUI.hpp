@@ -28,6 +28,7 @@ struct SimUI {
     bool    terrainHitValid  = false;   // did the hover ray hit terrain this frame?
     Vec3    terrainHitPos    = {};      // world-space hit position
     uint8_t terrainHitMat    = 0;       // material at hit position
+    float   terrainWaterLevel= 5.f;  // synced from renderer each frame for underwater detection
 
     // Window dimensions passed in from main.cpp each frame
     int  windowW = 1280, windowH = 800;

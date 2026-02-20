@@ -238,12 +238,10 @@ void SimUI::drawSimControls(World& world, Renderer& rend) {
     }
 
     ImGui::Separator();
-    ImGui::SliderFloat("Sim Speed",     &world.cfg.simSpeed,     0.1f, 20.f);
-    ImGui::TextDisabled("(- / + keys to adjust)");
     ImGui::SliderFloat("Mutation Scale",&world.cfg.mutationRateScale, 0.1f, 5.f);
-    ImGui::SliderFloat("Species ε",     &world.cfg.speciesEpsilon,   0.05f, 0.5f);
+    ImGui::SliderFloat("Species epsilon",     &world.cfg.speciesEpsilon,   0.05f, 0.5f);
     ImGui::SliderFloat("Plant Grow Rate",&world.cfg.plantGrowRate,   0.f, 5.f);
-    ImGui::SliderInt  ("Max Population",&world.cfg.maxPopulation, 100, 5000);
+    ImGui::SliderInt  ("Max Population",&world.cfg.maxPopulation, 100, 4096);
 
     ImGui::Separator();
     ImGui::Text("Camera");

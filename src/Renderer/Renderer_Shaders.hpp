@@ -4,6 +4,7 @@
 // All HLSL shader source strings live here so the .cpp files stay readable.
 // HLSL is a C-like language that compiles to GPU bytecode at runtime via
 // D3DCompile(). Each string may contain multiple entry points (functions).
+// cbuffer FrameConstants must exactly match the C++ struct in Renderer.hpp.
 
 // ── Terrain shader ────────────────────────────────────────────────────────────
 // Draws the terrain mesh with Lambertian (diffuse) lighting and fog-of-war.
@@ -11,8 +12,10 @@ static const char* TERRAIN_HLSL = R"HLSL(
 cbuffer FrameConstants : register(b0) {
     float4x4 viewProj;   // combined View*Projection matrix — projects 3D → 2D screen
     float4   camPos;     // camera world position (xyz)
-    float4   lightDir;   // sun direction vector (xyz)
-    float4   fowData;    // fog of war: xyz=player pos, w=radius (0=disabled)
+    float4   lightDir;      // FROM sun TOWARD scene (shader negates for dot product)
+    float4   fowData;       // xyz=player pos, w=radius (0=disabled)
+    float4   sunColor;      // rgb=sun tint, w=timeOfDay [0,1]
+    float4   ambientColor;  // rgb=sky/ambient, w=unused
 };
 
 struct VIn {
@@ -38,15 +41,22 @@ VOut VSMain(VIn v) {
 
 float4 PSMain(VOut v) : SV_TARGET {
     // Lambertian lighting: brightness = max(0, dot(normal, light_direction))
+    // L = direction FROM surface TOWARD sun
     float3 L   = normalize(-lightDir.xyz);
     float  ndl = saturate(dot(normalize(v.nrm), L));
-    float3 lit = v.col.rgb * (0.25f + 0.75f * ndl);  // 0.25 ambient + 0.75 diffuse
+
+    // Two-term lighting: ambient (sky) + sun (directional)
+    float3 lit = v.col.rgb * (ambientColor.rgb + sunColor.rgb * ndl);
 
     // Fog of war: darken terrain outside the player's vision radius
     if (fowData.w > 0.0f) {
         float d = length(v.wpos.xz - fowData.xz);
         float f = saturate((d - fowData.w * 0.8f) / (fowData.w * 0.2f + 0.001f));
-        lit = lerp(lit, float3(0.02f, 0.02f, 0.05f), f * f);
+        // At night blend toward darker tone; during day blend toward grey
+        float3 dark = lerp(float3(0.01f, 0.01f, 0.04f),
+                           float3(0.05f, 0.05f, 0.08f),
+                           saturate(sunColor.w * 2.0f - 0.5f));
+        lit = lerp(lit, dark, f * f);
     }
     return float4(lit, 1.0f);
 }
@@ -61,6 +71,8 @@ cbuffer FrameConstants : register(b0) {
     float4   camPos;
     float4   lightDir;
     float4   fowData;
+    float4   sunColor;
+    float4   ambientColor;
 };
 
 struct VIn {
@@ -95,7 +107,11 @@ VOut VSMain(VIn v) {
                 + up    * v.quadPos.y * v.size;
     VOut o;
     o.sv  = mul(float4(wpos, 1.0f), viewProj);
-    o.col = v.color;
+
+    // Scale creature colour by time-of-day brightness so they darken at night.
+    // Use a minimum of ambientColor to avoid completely black billboards.
+    float brightness = saturate(dot(ambientColor.rgb, float3(0.299f, 0.587f, 0.114f)) * 3.0f + 0.15f);
+    o.col = float4(v.color.rgb * brightness, v.color.a);
     return o;
 }
 float4 PSMain(VOut v) : SV_TARGET { return v.col; }
@@ -110,6 +126,8 @@ cbuffer FrameConstants : register(b0) {
     float4   camPos;
     float4   lightDir;
     float4   fowData;
+    float4   sunColor;
+    float4   ambientColor;
 };
 struct VIn  { float3 pos : POSITION; };
 struct VOut { float4 sv  : SV_POSITION; };

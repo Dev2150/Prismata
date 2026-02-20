@@ -6,7 +6,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # ── Sources ────────────────────────────────────────────────────────────────────
 set(SOURCES
-    src/main.cpp
+        src/main.cpp
+        src/App.cpp
         src/World.cpp
         src/Renderer/Renderer_Camera.cpp
         src/Renderer/Renderer_Creatures.cpp
@@ -17,16 +18,16 @@ set(SOURCES
         src/SimUI.cpp
 
     # ImGui – place the imgui/ folder at the project root
-        imgui/imgui.cpp
+    imgui/imgui.cpp
     imgui/imgui_draw.cpp
     imgui/imgui_tables.cpp
     imgui/imgui_widgets.cpp
     imgui/imgui_demo.cpp
-        imgui/backends/imgui_impl_win32.cpp
-        imgui/backends/imgui_impl_dx11.cpp
+    imgui/backends/imgui_impl_win32.cpp
+    imgui/backends/imgui_impl_dx11.cpp
 
     # ImPlot – place the implot/ folder at the project root
-        implot/implot.cpp
+    implot/implot.cpp
     implot/implot_items.cpp
     implot/implot_demo.cpp
 )

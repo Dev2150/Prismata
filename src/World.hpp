@@ -47,7 +47,7 @@ struct SimConfig {
     float speciesEpsilon    = 0.15f;     // genetic distance threshold for new species
     float plantGrowRate     = 0.5f;      // plants per chunk per second
     int   maxPopulation     = 2000;
-    bool  paused            = false;
+    bool  paused            = true;      // start paused so player can survey the world first
 };
 
 // Free function used by World internals and available externally

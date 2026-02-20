@@ -117,9 +117,13 @@ VOut VSMain(VIn v) {
 float4 PSMain(VOut v) : SV_TARGET { return v.col; }
 )HLSL";
 
-// ── Simple position-only shader ────────────────────────────────────────────────
-// Shared by the water plane and the FOV cone.
-// One vertex shader, two pixel shaders (chosen by the CPU at draw time).
+// ── Simple / Water / FOV shader ────────────────────────────────────────────────
+// Shared cbuffer and input layout. Two VS entry points:
+//   VSMain     – plain passthrough, used for FOV cone.
+//   WaterVSMain – adds a multi-octave sine wave in Y, used for the water plane.
+// Two PS entry points:
+//   WaterPS – translucent blue with depth-fade toward the camera.
+//   FovPS   – translucent yellow.
 static const char* SIMPLE_HLSL = R"HLSL(
 cbuffer FrameConstants : register(b0) {
     float4x4 viewProj;
@@ -127,16 +131,51 @@ cbuffer FrameConstants : register(b0) {
     float4   lightDir;
     float4   fowData;
     float4   sunColor;
-    float4   ambientColor;
+    float4   ambientColor;  // w = simTime in seconds (used for water wave animation)
 };
 struct VIn  { float3 pos : POSITION; };
-struct VOut { float4 sv  : SV_POSITION; };
+struct VOut { float4 sv  : SV_POSITION; float3 wpos : TEXCOORD0; };
 
+// ── Plain VS (FOV cone) ───────────────────────────────────────────────────────
 VOut VSMain(VIn v) {
     VOut o;
     o.sv = mul(float4(v.pos, 1.0f), viewProj);
+    o.wpos = v.pos;
     return o;
 }
-float4 WaterPS(VOut v) : SV_TARGET { return float4(0.08f, 0.35f, 0.72f, 0.78f); }  // translucent blue
-float4 FovPS  (VOut v) : SV_TARGET { return float4(1.0f,  0.95f, 0.2f,  0.18f); }  // translucent yellow
+
+// ── Water VS ──────────────────────────────────────────────────────────────────
+// Adds three overlapping sine waves to create a gentle, organic water surface.
+// Using two spatial frequencies + one diagonal wave breaks the flat-plane look
+// even with the sparse vertex count of the water quad.
+VOut WaterVSMain(VIn v) {
+    float t   = ambientColor.w;   // simTime in seconds
+    float x   = v.pos.x;
+    float z   = v.pos.z;
+
+    // Primary swell: long, slow wave travelling diagonally
+    float wave  = sin(x * 0.07f + z * 0.05f + t * 0.8f) * 0.18f;
+    // Secondary ripple: shorter, faster, perpendicular direction
+    wave       += sin(x * 0.13f - z * 0.09f + t * 1.3f) * 0.09f;
+    // Tertiary micro-chop: high frequency, low amplitude
+    wave       += sin(x * 0.27f + z * 0.22f - t * 1.9f) * 0.04f;
+
+    float3 wpos = float3(v.pos.x, v.pos.y + wave, v.pos.z);
+    VOut o;
+    o.sv   = mul(float4(wpos, 1.0f), viewProj);
+    o.wpos = wpos;
+    return o;
+}
+
+// ── Pixel shaders ─────────────────────────────────────────────────────────────
+float4 WaterPS(VOut v) : SV_TARGET {
+    // Subtle brightness based on time of day so water darkens at night
+    float dayBrightness = saturate(sunColor.w * 1.6f + 0.2f);
+    float3 waterCol = float3(0.08f, 0.35f, 0.72f) * (0.4f + 0.6f * dayBrightness);
+    return float4(waterCol, 0.72f);
+}
+
+float4 FovPS(VOut v) : SV_TARGET {
+    return float4(1.0f, 0.95f, 0.2f, 0.18f);   // translucent yellow
+}
 )HLSL";

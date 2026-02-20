@@ -77,7 +77,7 @@ static void computeDayNightLighting(float timeOfDay,
     sunColor[0] = finalSun[0] * aboveHorizon;
     sunColor[1] = finalSun[1] * aboveHorizon;
     sunColor[2] = finalSun[2] * aboveHorizon;
-    sunColor[3] = timeOfDay;   // pass time-of-day through to shader in w (future use)
+    sunColor[3] = timeOfDay;   // w = timeOfDay for the creature brightness shader
 
     // ── Ambient (sky) colour ──────────────────────────────────────────────────
     // Night: deep blue  /  Dawn-Dusk: purple-pink  /  Day: cool pale blue sky
@@ -94,6 +94,10 @@ static void computeDayNightLighting(float timeOfDay,
     ambientColor[0] = finalAmb[0];
     ambientColor[1] = finalAmb[1];
     ambientColor[2] = finalAmb[2];
+    // ── ambientColor.w = simTime (seconds) ────────────────────────────────────
+    // Consumed by WaterVSMain in SIMPLE_HLSL to drive the wave animation.
+    // Value is set by the caller (updateFrameConstants) from world.simTime.
+    // Left at 0 here; overwritten below.
     ambientColor[3] = 0.f;
 }
 
@@ -125,6 +129,10 @@ void Renderer::updateFrameConstants(const World& world, float aspect) {
                             fc->lightDir,
                             fc->sunColor,
                             fc->ambientColor);
+
+    // ── Pass simTime for water wave animation ─────────────────────────────────
+    // WaterVSMain reads ambientColor.w to phase the sine waves each frame.
+    fc->ambientColor[3] = world.simTime;
 
     // ── Fog of war ────────────────────────────────────────────────────────────
     // w component acts as enable flag (0 = disabled, >0 = radius)
@@ -167,7 +175,7 @@ void Renderer::render(const World& world, float aspectRatio) {
     ctx->OMSetDepthStencilState(dssDepth, 0);
     renderTerrain(world);                           // 1. opaque terrain
 
-    if (showWater   && !wireframe) renderWater(world);     // 2. translucent water
-    if (showFOVCone && !wireframe) renderFOVCone(world);   // 3. translucent FOV overlay
+    if (showWater   && !wireframe) renderWater(world);     // 2. animated water
+    if (showFOVCone && !wireframe) renderFOVCone(world);   // 3. FOV overlay
     renderCreatures(world);                         // 4. creature billboards
 }

@@ -103,21 +103,45 @@ void Renderer::buildChunkMesh(const World& world, int cx, int cz) {
 // ── buildWaterMesh ────────────────────────────────────────────────────────────
 // A flat quad (6 vertices, no index buffer) covering the whole world at waterLevel.
 void Renderer::buildWaterMesh(const World& world) {
+    constexpr int waterGridN = 64;   // grid resolution (64×64 quads = 4 096 triangles)
     float maxX = (float)(world.worldCX * CHUNK_SIZE);
     float maxZ = (float)(world.worldCZ * CHUNK_SIZE);
     float wy   = waterLevel;
 
-    SimpleVertex verts[] = {
-        {0.f,  wy, 0.f}, {maxX, wy, 0.f}, {0.f,  wy, maxZ},
-        {maxX, wy, 0.f}, {maxX, wy, maxZ},{0.f,  wy, maxZ},
-    };
+    std::vector<SimpleVertex> verts;
+    verts.reserve(waterGridN * waterGridN * 6);
+
+    float stepX = maxX / waterGridN;
+    float stepZ = maxZ / waterGridN;
+
+    for (int iz = 0; iz < waterGridN; iz++) {
+        for (int ix = 0; ix < waterGridN; ix++) {
+            float x0 = ix       * stepX, x1 = (ix + 1) * stepX;
+            float z0 = iz       * stepZ, z1 = (iz + 1) * stepZ;
+
+            // Two triangles per cell (CCW winding)
+            verts.push_back({x0, wy, z0});
+            verts.push_back({x1, wy, z0});
+            verts.push_back({x0, wy, z1});
+
+            verts.push_back({x1, wy, z0});
+            verts.push_back({x1, wy, z1});
+            verts.push_back({x0, wy, z1});
+        }
+    }
 
     safeRelease(waterVB);
     D3D11_BUFFER_DESC bd{};
-    bd.ByteWidth = sizeof(verts); bd.Usage = D3D11_USAGE_IMMUTABLE;
+    bd.ByteWidth      = (UINT)(verts.size() * sizeof(SimpleVertex));
+    bd.Usage          = D3D11_USAGE_IMMUTABLE;
     bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-    D3D11_SUBRESOURCE_DATA sd{}; sd.pSysMem = verts;
+    D3D11_SUBRESOURCE_DATA sd{}; sd.pSysMem = verts.data();
     device->CreateBuffer(&bd, &sd, &waterVB);
+
+    // Store the vertex count so renderWater knows how many to draw
+    // Reuse waterBuilt flag and store count in a new member—encode as negative trick:
+    // We store the count in a local. Since we can't easily add a new member without
+    // touching the header again, we just compute it from the grid constant at draw time.
     waterBuilt = true;
 }
 
@@ -144,16 +168,19 @@ void Renderer::renderTerrain(const World& world) {
 }
 
 // ── renderWater ───────────────────────────────────────────────────────────────
-// Draws the water plane with alpha blending and depth-test-only (no depth write),
-// so transparent water doesn't block creatures drawn afterward.
+// Uses the animated waterVS so the grid vertices oscillate with the sine waves
+// defined in WaterVSMain (driven by simTime passed via ambientColor.w).
 void Renderer::renderWater(const World& world) {
     if (!waterBuilt) buildWaterMesh(world);
     if (!waterVB) return;
 
-    ctx->RSSetState(rsSolid);
+    constexpr int waterGridN    = 64;
+    constexpr int waterVertCount = waterGridN * waterGridN * 6;
+
+    ctx->RSSetState(rsSolidNoCull);   // no culling: waves may briefly show underside
     ctx->IASetInputLayout(simpleLayout);
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    ctx->VSSetShader(simpleVS, nullptr, 0);
+    ctx->VSSetShader(waterVS, nullptr, 0);  // animated wave VS
     ctx->PSSetShader(waterPS,  nullptr, 0);
 
     float bf[4] = {};
@@ -162,8 +189,9 @@ void Renderer::renderWater(const World& world) {
 
     UINT stride = sizeof(SimpleVertex), offset = 0;
     ctx->IASetVertexBuffers(0, 1, &waterVB, &stride, &offset);
-    ctx->Draw(6, 0);
+    ctx->Draw(waterVertCount, 0);
 
     ctx->OMSetBlendState(nullptr, bf, 0xFFFFFFFF);
     ctx->OMSetDepthStencilState(dssDepth, 0);
+    ctx->RSSetState(rsSolid);
 }

@@ -86,7 +86,7 @@ struct Renderer {
     ID3D11Device*        device = nullptr;
     ID3D11DeviceContext* ctx    = nullptr;
 
-    // ── Shaders & layout ──────────────────────────────────────────────────────
+    // ── Shaders & layouts ─────────────────────────────────────────────────────
     ID3D11VertexShader*   terrainVS          = nullptr;
     ID3D11PixelShader*    terrainPS          = nullptr;
     ID3D11InputLayout*    terrainLayout = nullptr;
@@ -96,11 +96,13 @@ struct Renderer {
     ID3D11PixelShader*    creaturePS         = nullptr;
     ID3D11InputLayout*    creatureLayout     = nullptr;
 
-    // ── Simple (position-only) shaders – shared by water + FOV cone ──────────
-    // simpleVS: position-only VS that just multiplies by viewProj.
-    // waterPS : renders translucent blue.
-    // fovPS   : renders translucent yellow.
+    // Simple (position-only) shaders shared by FOV cone and water plane.
+    // waterVS   – wave-animated vertex shader for the water surface.
+    // simpleVS  – plain passthrough VS for the FOV cone.
+    // waterPS   – translucent blue pixel shader.
+    // fovPS     – translucent yellow pixel shader.
     ID3D11VertexShader*   simpleVS   = nullptr;
+    ID3D11VertexShader*   waterVS      = nullptr;  // wave-animated water VS
     ID3D11PixelShader*    waterPS    = nullptr;
     ID3D11PixelShader*    fovPS      = nullptr;
     ID3D11InputLayout*    simpleLayout = nullptr;
@@ -138,13 +140,14 @@ struct Renderer {
     EntityID selectedID   = INVALID_ID;  // creature whose FOV cone to draw
     bool     showFOVCone  = true;        // toggle FOV cone overlay
     bool     showWater    = true;        // toggle water plane
-    float    waterLevel   = 5.f;       // Y-height of the water plane
+    float    waterLevel   = 6.f;       // Y-height of the water plane
     bool     lockYawFollow= false;       // when true, following a creature won't rotate the camera
 
     // ── Creature possession: translation-only follow ───────────────────────────
     // When a creature is possessed we record the camera→creature offset at the
     // moment possession begins and maintain that fixed offset for the duration.
     // This means the camera never rotates or zooms — it just translates in lockstep.
+    // ambientColor.w carries simTime for the water wave animation.
     Float3 possessOffset    = {0.f, 0.f, 0.f};  // camera pos - creature pos at start
     bool   hasPossessOffset = false;             // true once offset has been captured
 
@@ -156,7 +159,7 @@ struct Renderer {
         float lightDir[4];      // 16 bytes – sun direction (FROM sun TOWARD scene, w unused)
         float fowData[4];       // 16 bytes – fog of war: xyz=player pos, w=radius (0=off)
         float sunColor[4];      // 16 bytes – rgb=sun light tint, w=timeOfDay [0,1]
-        float ambientColor[4];  // 16 bytes – rgb=sky/ambient light, w=unused
+        float ambientColor[4];  // 16 bytes – rgb=sky/ambient light, w=simTime (seconds)
     };
 
     // ── Vertex layouts ─────────────────────────────────────────────────────────

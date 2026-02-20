@@ -123,23 +123,34 @@ bool Renderer::createShaders() {
     device->CreateInputLayout(cd, 6, cvs->GetBufferPointer(), cvs->GetBufferSize(), &creatureLayout);
     cvs->Release(); cps->Release();
 
-    // ── Simple position-only (water + FOV cone) ───────────────────────────────
+    // ── Simple / Water / FOV shaders ──────────────────────────────────────────
+    // Compile three distinct shader objects from the same SIMPLE_HLSL source:
+    //   simpleVS  – plain passthrough VS → used by the FOV cone
+    //   waterVS   – wave-animated VS     → used by the water plane
+    //   waterPS   – translucent blue PS
+    //   fovPS     – translucent yellow PS
     ID3DBlob* svs = compileShader(SIMPLE_HLSL, "VSMain",  "vs_5_0");
+    ID3DBlob* wvs  = compileShader(SIMPLE_HLSL, "WaterVSMain", "vs_5_0");
     ID3DBlob* wps = compileShader(SIMPLE_HLSL, "WaterPS", "ps_5_0");
     ID3DBlob* fps = compileShader(SIMPLE_HLSL, "FovPS",   "ps_5_0");
-    if (!svs || !wps || !fps) {
-        if(svs)svs->Release(); if(wps)wps->Release(); if(fps)fps->Release();
+    if (!svs || !wvs || !wps || !fps) {
+        if(svs)svs->Release(); if(wvs)wvs->Release();
+        if(wps)wps->Release(); if(fps)fps->Release();
         return false;
     }
     device->CreateVertexShader(svs->GetBufferPointer(), svs->GetBufferSize(), nullptr, &simpleVS);
+    device->CreateVertexShader(wvs->GetBufferPointer(), wvs->GetBufferSize(), nullptr, &waterVS);
     device->CreatePixelShader (wps->GetBufferPointer(), wps->GetBufferSize(), nullptr, &waterPS);
     device->CreatePixelShader (fps->GetBufferPointer(), fps->GetBufferSize(), nullptr, &fovPS);
 
+    // Input layout is the same for all simple variants (position-only)
     D3D11_INPUT_ELEMENT_DESC sd[] = {
         {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
     };
+    // Use svs bytecode for layout creation (any of the VS blobs would work since
+    // they share the same input signature)
     device->CreateInputLayout(sd, 1, svs->GetBufferPointer(), svs->GetBufferSize(), &simpleLayout);
-    svs->Release(); wps->Release(); fps->Release();
+    svs->Release(); wvs->Release(); wps->Release(); fps->Release();
 
     return true;
 }
@@ -161,7 +172,7 @@ bool Renderer::createBuffers(int w, int h) {
 
     // Creature quad: 4 corners of a unit quad [-0.5,0.5].
     // IMMUTABLE = never changes; fastest GPU read mode.
-    // Laid out as TRIANGLE_STRIP: BL, BR, TL, TR → two triangles.
+    // Laid out as TRIANGLE_STRIP: two triangles.
     float quad[] = {-0.5f,0.5f, 0.5f,0.5f, -0.5f,-0.5f, 0.5f,-0.5f}; // TL,TR,BL,BR
     bd.ByteWidth      = sizeof(quad);
     bd.Usage          = D3D11_USAGE_IMMUTABLE;
@@ -218,7 +229,8 @@ void Renderer::shutdown() {
     for (auto& cm : chunkMeshes) { safeRelease(cm.vb); safeRelease(cm.ib); }
     safeRelease(terrainVS);  safeRelease(terrainPS);
     safeRelease(creatureVS); safeRelease(creaturePS);
-    safeRelease(simpleVS);   safeRelease(waterPS);   safeRelease(fovPS);
+    safeRelease(simpleVS);   safeRelease(waterVS);
+    safeRelease(waterPS);    safeRelease(fovPS);
     safeRelease(terrainLayout); safeRelease(creatureLayout); safeRelease(simpleLayout);
     safeRelease(cbFrame);
     safeRelease(creatureQuadVB); safeRelease(creatureInstanceVB);

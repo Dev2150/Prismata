@@ -1,4 +1,8 @@
-#include "App_Globals.hpp"
+#include <d3d11.h>
+#include "Renderer/Renderer.hpp"
+#include "Sim/DataRecorder.hpp"
+#include "UI/SimUI.hpp"
+#include "World/World.hpp"
 
 // ── D3D11 globals ─────────────────────────────────────────────────────────────
 // Kept as file-scope statics so helper functions (CreateDeviceD3D, WndProc, etc.)

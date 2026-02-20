@@ -134,7 +134,7 @@ Index of this file:
 // System includes
 #include <ctype.h>          // toupper
 #include <limits.h>         // INT_MIN, INT_MAX
-#include <Math.hpp>           // sqrtf, powf, cosf, sinf, floorf, ceilf
+#include <../src/Core/Math.hpp>
 #include <stdio.h>          // vsnprintf, sscanf, printf
 #include <stdlib.h>         // NULL, malloc, free, atoi
 #include <stdint.h>         // intptr_t

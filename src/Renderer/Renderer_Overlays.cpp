@@ -3,6 +3,8 @@
 #include <vector>
 #include <algorithm>
 
+#include "World/World.hpp"
+
 // ── Renderer_Overlays.cpp ─────────────────────────────────────────────────────
 // Covers: renderFOVCone.
 // Overlay geometry is drawn after opaque objects, with depth-test-only (no write)

@@ -1,5 +1,5 @@
 #pragma once
-#include "Creature.hpp"
+#include "../Sim/Creature.hpp"
 #include <vector>
 #include <unordered_map>
 #include <functional>

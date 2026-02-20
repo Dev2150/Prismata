@@ -56,7 +56,7 @@ Index of this file:
 
 #include <stdio.h>      // FILE*, sscanf
 #include <stdlib.h>     // NULL, malloc, free, qsort, atoi, atof
-#include <Math.hpp>       // sqrtf, fabsf, fmodf, powf, floorf, ceilf, cosf, sinf
+#include <../src/Core/Math.hpp>
 #include <limits.h>     // INT_MIN, INT_MAX
 
 // Enable SSE intrinsics if available

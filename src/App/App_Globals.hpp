@@ -1,10 +1,10 @@
 #pragma once
 #include <d3d11.h>
 #include <Windows.h>
-#include "World.hpp"
-#include "DataRecorder.hpp"
+#include "World/World.hpp"
+#include "Sim/DataRecorder.hpp"
 #include "Renderer/Renderer.hpp"
-#include "SimUI.hpp"
+#include "UI/SimUI.hpp"
 
 // ── D3D11 device objects ──────────────────────────────────────────────────────
 // Defined in App_Globals.cpp; shared by App.cpp, App_D3D.cpp, App_WndProc.cpp.

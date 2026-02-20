@@ -1,5 +1,5 @@
-#include "App_Globals.hpp"
 #include <d3d11.h>
+#include "App_Globals.hpp"
 
 // ── D3D11 device and swap chain creation ──────────────────────────────────────
 // Attempts hardware acceleration first; falls back to WARP (software rasteriser)

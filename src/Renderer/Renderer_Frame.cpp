@@ -3,6 +3,8 @@
 #include <cmath>
 #include <algorithm>
 
+#include "World/World.hpp"
+
 // ── Renderer_Frame.cpp ────────────────────────────────────────────────────────
 // Covers: updateFrameConstants, render.
 // This is the main per-frame orchestrator — it calls the sub-renderers in order.

@@ -44,8 +44,8 @@
 
 #pragma once
 #include <d3d11.h>
-#include "../Math.hpp"
-#include "../World.hpp"
+#include "../Core/Math.hpp"
+#include "Sim/Creature.hpp"
 
 // ── Camera ────────────────────────────────────────────────────────────────────
 struct Camera {

@@ -1,5 +1,3 @@
-#include "App.hpp"
-#include "App_Globals.hpp"
 #include "imgui.hpp"
 #include "imgui_impl_win32.hpp"
 #include "imgui_impl_dx11.hpp"
@@ -7,6 +5,8 @@
 #include <chrono>
 #include <algorithm>
 #include <cmath>
+
+#include "App_Globals.hpp"
 
 int RunApplication()
 {

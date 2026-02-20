@@ -1,7 +1,6 @@
 #include <random>
-
-#include "Creature.hpp"
 #include "World.hpp"
+#include "Sim/Creature.hpp"
 
 // ── Entity management ─────────────────────────────────────────────────────────
 Creature& World::spawnCreature(const Genome& g, const Vec3& pos,

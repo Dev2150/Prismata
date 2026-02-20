@@ -1,7 +1,7 @@
 // SimUI.h
 #pragma once
-#include "World.hpp"
-#include "DataRecorder.hpp"
+#include "World/World.hpp"
+#include "Sim/DataRecorder.hpp"
 #include "Renderer/Renderer.hpp"
 
 struct SimUI {

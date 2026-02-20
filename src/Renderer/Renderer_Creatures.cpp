@@ -2,6 +2,8 @@
 #include <cmath>
 #include <algorithm>
 
+#include "World/World.hpp"
+
 // ── Renderer_Creatures.cpp ────────────────────────────────────────────────────
 // Covers: hueToRGB, renderCreatures.
 // All creatures are drawn in a single instanced draw call.

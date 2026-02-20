@@ -1,6 +1,7 @@
 #include "Renderer.hpp"
 #include <cmath>
 #include <algorithm>
+#include "World/World.hpp"
 
 // ── Renderer_Camera.cpp ───────────────────────────────────────────────────────
 // Covers: tickCamera, onMouseMove, onKey, screenToTerrain.

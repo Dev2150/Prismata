@@ -1,7 +1,6 @@
 #include "App_Globals.hpp"
 #include "imgui.hpp"
-#include "imgui_impl_win32.hpp"
-#include "Math.hpp"
+#include "Core/Math.hpp"
 #include <algorithm>
 #include <cmath>
 

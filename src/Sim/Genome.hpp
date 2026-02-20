@@ -1,5 +1,5 @@
 #pragma once
-#include "RNG.hpp"
+#include "../Core/RNG.hpp"
 #include <array>
 #include <cmath>
 #include <algorithm>

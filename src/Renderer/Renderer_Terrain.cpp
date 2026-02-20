@@ -3,6 +3,8 @@
 #include <vector>
 #include <algorithm>
 
+#include "World/World.hpp"
+
 // ── Renderer_Terrain.cpp ──────────────────────────────────────────────────────
 // Covers: materialColor, buildChunkMesh, buildWaterMesh, renderTerrain, renderWater.
 

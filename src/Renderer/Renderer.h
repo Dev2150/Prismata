@@ -1,7 +1,7 @@
 #pragma once
 #include <d3d11.h>
-#include "Math.h"
-#include "World.h"
+#include "../Math.h"
+#include "../World.h"
 
 // ── Camera ────────────────────────────────────────────────────────────────────
 struct Camera {
@@ -76,6 +76,7 @@ struct Renderer {
     ID3D11DepthStencilState* dssNoDepthWrite= nullptr;  // depth test ON, write OFF (water)
     ID3D11BlendState*        bsAlpha     = nullptr;
     bool waterBuilt = false;                // set after buildWaterMesh()
+    size_t MAX_CREATURES = 4096;
 
     // ── Depth buffer (public so main can bind it) ─────────────────────────────
     ID3D11Texture2D*        depthTex = nullptr;

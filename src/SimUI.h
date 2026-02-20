@@ -2,7 +2,7 @@
 #pragma once
 #include "World.h"
 #include "DataRecorder.h"
-#include "Renderer.h"
+#include "Renderer/Renderer.h"
 
 struct SimUI {
     // ── State ──────────────────────────────────────────────────────────────────

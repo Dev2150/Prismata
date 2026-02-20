@@ -41,6 +41,8 @@ set(SOURCES
     implot/implot_items.cpp
     implot/implot_demo.cpp
         src/Sim/Creature.cpp
+        src/Renderer/Planet/PlanetQuadTree.cpp
+        src/Renderer/Planet/PlanetRenderer.cpp
 )
 
 add_executable(Prismata WIN32 ${SOURCES})

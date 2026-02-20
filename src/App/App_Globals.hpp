@@ -5,6 +5,8 @@
 #include "Sim/DataRecorder.hpp"
 #include "Renderer/Renderer.hpp"
 #include "UI/SimUI.hpp"
+#include "Renderer/Planet/PlanetRenderer.hpp"
+
 
 // ── D3D11 device objects ──────────────────────────────────────────────────────
 // Defined in App_Globals.cpp; shared by App.cpp, App_D3D.cpp, App_WndProc.cpp.
@@ -17,10 +19,11 @@ extern UINT                    g_ResizeHeight;
 extern ID3D11RenderTargetView* g_mainRenderTargetView;
 
 // ── Simulation objects ────────────────────────────────────────────────────────
-extern World        g_world;
-extern DataRecorder g_recorder;
-extern Renderer     g_renderer;
-extern SimUI        g_ui;
+extern World            g_world;
+extern DataRecorder     g_recorder;
+extern Renderer         g_renderer;
+extern PlanetRenderer   g_planet;
+extern SimUI            g_ui;
 
 // ── D3D11 helpers (implemented in App_D3D.cpp) ────────────────────────────────
 bool CreateDeviceD3D(HWND hWnd);

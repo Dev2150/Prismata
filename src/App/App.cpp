@@ -103,6 +103,19 @@ int RunApplication()
         return 1;
     }
 
+    PlanetConfig pcfg;
+    pcfg.radius          = 1000.f;
+    pcfg.center          = {0.f, -1800.f, 0.f};   // planet below the flat world
+    pcfg.heightScale     = 120.f;     // max terrain height above sea level
+    pcfg.maxDepth        = 16;        // deepest LOD level (~1.5m patches at max)
+    pcfg.patchRes        = 17;        // 17×17 vertices per patch (16×16 quads)
+    pcfg.splitThreshold  = 1.2f;      // tune for quality vs performance
+
+    if (!g_planet.init(g_pd3dDevice, g_pd3dDeviceContext, pcfg)) {
+        OutputDebugStringA("FATAL: Planet init failed!\n");
+        // handle error
+    }
+
     // ── Auto-load default settings ────────────────────────────────────────────
     // Attempt to load "default.json" on startup; silently ignore if missing.
     g_ui.loadSettingsFromFile("default.json", g_world, g_renderer);
@@ -168,6 +181,8 @@ int RunApplication()
 
         // tickCamera must run before render so the view matrix is fresh.
         g_renderer.tickCamera(dt, g_world);
+        // update quadtree LOD
+        g_planet.update(g_renderer.camera);
         // World::tick() advances all creatures, plants, and reproduction
         g_world.tick(dt);
         // DataRecorder::tick() may or may not fire depending on its 1-Hz timer.
@@ -224,6 +239,9 @@ int RunApplication()
         float aspect = vp.Width / std::max(vp.Height, 1.f);
         g_renderer.render(g_world, aspect);
 
+        g_planet.render(g_renderer.camera, aspect,
+                g_world.timeOfDay(), g_world.simTime);
+
         // ── ImGui / ImPlot UI render pass ──────────────────────────────────
         // NewFrame() must be called after the platform back-ends have processed
         // input (ImGui_ImplWin32_NewFrame reads mouse/keyboard state from Win32)
@@ -267,6 +285,7 @@ int RunApplication()
 
     // ── Shutdown ──────────────────────────────────────────────────────────────
     // Release everything in reverse initialisation order to avoid dangling references.
+    g_planet.shutdown();
     g_renderer.shutdown();          // release D3D buffers, shaders, states
     ImGui_ImplDX11_Shutdown();
     ImGui_ImplWin32_Shutdown();

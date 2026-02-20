@@ -140,7 +140,7 @@ struct Renderer {
     EntityID selectedID   = INVALID_ID;  // creature whose FOV cone to draw
     bool     showFOVCone  = true;        // toggle FOV cone overlay
     bool     showWater    = true;        // toggle water plane
-    float    waterLevel   = 6.f;       // Y-height of the water plane
+    float    waterLevel   = 0.f;       // Y-height of the water plane
     bool     lockYawFollow= false;       // when true, following a creature won't rotate the camera
 
     // ── Creature possession: translation-only follow ───────────────────────────

@@ -3,6 +3,7 @@
 #include "Sim/DataRecorder.hpp"
 #include "UI/SimUI.hpp"
 #include "World/World.hpp"
+#include "Renderer/Planet/PlanetRenderer.hpp"
 
 // ── D3D11 globals ─────────────────────────────────────────────────────────────
 // Kept as file-scope statics so helper functions (CreateDeviceD3D, WndProc, etc.)
@@ -20,4 +21,5 @@ ID3D11RenderTargetView* g_mainRenderTargetView = nullptr;  // view into the swap
 World        g_world;     // terrain + creatures + plants + species registry
 DataRecorder g_recorder;  // samples population statistics at 1 Hz for graphing
 Renderer     g_renderer;  // D3D11 draw calls, camera, chunk mesh cache
+PlanetRenderer g_planet;  //
 SimUI        g_ui;        // all ImGui panels; owns selectedID / showDemoWindow etc.

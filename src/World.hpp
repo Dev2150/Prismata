@@ -55,6 +55,17 @@ bool sameSpecies(const Genome& a, const Genome& b, float epsilon = 0.15f);
 
 // ── World ─────────────────────────────────────────────────────────────────────
 struct World {
+    // ── Time constants ─────────────────────────────────────────────────────────
+    // Duration in seconds, at simulation speed of 1X
+    static constexpr float DAY_DURATION = 30.f;
+
+    // Returns a [0, 1) fraction representing time within the current in-game day.
+    //   0.0 = midnight, 0.25 = dawn, 0.5 = noon, 0.75 = dusk
+    float timeOfDay() const { return std::fmod(simTime / DAY_DURATION, 1.f); }
+
+    // Total elapsed in-game days (whole + fractional)
+    float totalDays() const { return simTime / DAY_DURATION; }
+
     // ── Config ────────────────────────────────────────────────────────────────
     SimConfig cfg;
     uint64_t  seed     = 0;

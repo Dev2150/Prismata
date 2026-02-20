@@ -1,10 +1,101 @@
 #include "Renderer.hpp"
 #include <cstring>
+#include <cmath>
 #include <algorithm>
 
 // ── Renderer_Frame.cpp ────────────────────────────────────────────────────────
 // Covers: updateFrameConstants, render.
 // This is the main per-frame orchestrator — it calls the sub-renderers in order.
+
+// ── Day/night lighting helpers ─────────────────────────────────────────────────
+
+// Smooth step in [0,1]: 0 when x<=lo, 1 when x>=hi, smooth cubic between.
+static float smoothStep(float lo, float hi, float x) {
+    float t = std::max(0.f, std::min(1.f, (x - lo) / (hi - lo)));
+    return t * t * (3.f - 2.f * t);
+}
+
+// Linear interpolate between two 3-component colours.
+static void lerpColor(const float a[3], const float b[3], float t, float out[3]) {
+    out[0] = a[0] + (b[0]-a[0]) * t;
+    out[1] = a[1] + (b[1]-a[1]) * t;
+    out[2] = a[2] + (b[2]-a[2]) * t;
+}
+
+// ── computeDayNightLighting ────────────────────────────────────────────────────
+// Given timeOfDay in [0,1) (0=midnight, 0.25=dawn, 0.5=noon, 0.75=dusk),
+// fills lightDir, sunColor (rgb + timeOfDay in w), and ambientColor (rgb).
+//
+// Sun arc:
+//   elevation = -cos(t × 2π)   →  -1 at midnight, +1 at noon
+//   lightDir.y = -elevation     →  negative when sun is above (points downward from sun)
+//   lightDir.x = sin(t × 2π)   →  east→west sweep across the sky
+static void computeDayNightLighting(float timeOfDay,
+                                    float lightDir[4],
+                                    float sunColor[4],
+                                    float ambientColor[4])
+{
+    const float PI = 3.14159265f;
+    float phase     = timeOfDay * 2.f * PI;
+
+    // Sun elevation: +1 at noon, -1 at midnight
+    float elevation = -std::cos(phase);
+
+    // Light direction: FROM the sun TOWARD the scene (shader negates it)
+    // x component produces the east→west sweep; fixed z gives a slight south tilt.
+    lightDir[0] =  std::sin(phase) * 0.6f;
+    lightDir[1] = -elevation;                    // negative = sun above horizon
+    lightDir[2] =  0.3f;
+    lightDir[3] =  0.f;
+
+    // Normalise so the shader's saturate(dot(N, L)) gives correct results.
+    float len = std::sqrt(lightDir[0]*lightDir[0]
+                        + lightDir[1]*lightDir[1]
+                        + lightDir[2]*lightDir[2]);
+    if (len > 1e-6f) { lightDir[0]/=len; lightDir[1]/=len; lightDir[2]/=len; }
+
+    // ── Sun colour ────────────────────────────────────────────────────────────
+    // Reference colours (sRGB-ish):
+    //   Night   : no direct sun
+    //   Dawn/Dusk: warm orange-red
+    //   Day     : bright warm white
+
+    static const float colNight[3]    = {0.00f, 0.00f, 0.00f};
+    static const float colHorizon[3]  = {1.00f, 0.45f, 0.10f}; // orange glow
+    static const float colDay[3]      = {1.00f, 0.95f, 0.80f}; // warm white
+
+    float aboveHorizon = std::max(0.f, elevation);          // 0 at night, 1 at noon
+    float horizonBlend = smoothStep(-0.15f, 0.25f, elevation); // 0=night, 1=fully day
+    float dayBlend     = smoothStep( 0.15f, 0.55f, elevation); // 0=horizon, 1=full day
+
+    float midSun[3];
+    lerpColor(colNight, colHorizon, horizonBlend, midSun);
+    float finalSun[3];
+    lerpColor(midSun, colDay, dayBlend, finalSun);
+
+    // Scale brightness by elevation so the sun doesn't light underground
+    sunColor[0] = finalSun[0] * aboveHorizon;
+    sunColor[1] = finalSun[1] * aboveHorizon;
+    sunColor[2] = finalSun[2] * aboveHorizon;
+    sunColor[3] = timeOfDay;   // pass time-of-day through to shader in w (future use)
+
+    // ── Ambient (sky) colour ──────────────────────────────────────────────────
+    // Night: deep blue  /  Dawn-Dusk: purple-pink  /  Day: cool pale blue sky
+
+    static const float ambNight[3]   = {0.03f, 0.04f, 0.12f};
+    static const float ambHorizon[3] = {0.20f, 0.14f, 0.20f}; // lavender dusk
+    static const float ambDay[3]     = {0.28f, 0.35f, 0.48f}; // sky blue
+
+    float midAmb[3];
+    lerpColor(ambNight, ambHorizon, horizonBlend, midAmb);
+    float finalAmb[3];
+    lerpColor(midAmb, ambDay, dayBlend, finalAmb);
+
+    ambientColor[0] = finalAmb[0];
+    ambientColor[1] = finalAmb[1];
+    ambientColor[2] = finalAmb[2];
+    ambientColor[3] = 0.f;
+}
 
 // ── updateFrameConstants ──────────────────────────────────────────────────────
 // Writes camera, lighting, and fog data into the GPU constant buffer once per frame.
@@ -28,18 +119,23 @@ void Renderer::updateFrameConstants(const World& world, float aspect) {
     memcpy(fc->viewProj, vp.m, sizeof(vp.m));
     fc->camPos[0] = camera.pos.x; fc->camPos[1] = camera.pos.y;
     fc->camPos[2] = camera.pos.z; fc->camPos[3] = 0.f;
-    fc->lightDir[0] = 0.4f; fc->lightDir[1] = -0.8f;
-    fc->lightDir[2] = 0.3f; fc->lightDir[3] =  0.f;
 
-    // Fog of war: w component acts as enable flag (0 = disabled, >0 = radius)
+    // ── Day/night lighting ────────────────────────────────────────────────────
+    computeDayNightLighting(world.timeOfDay(),
+                            fc->lightDir,
+                            fc->sunColor,
+                            fc->ambientColor);
+
+    // ── Fog of war ────────────────────────────────────────────────────────────
+    // w component acts as enable flag (0 = disabled, >0 = radius)
     if (showFogOfWar && playerID != INVALID_ID) {
         auto it = world.idToIndex.find(playerID);
         if (it != world.idToIndex.end()) {
             const Creature& pc = world.creatures[it->second];
-            fc->fowCenter[0] = pc.pos.x; fc->fowCenter[1] = pc.pos.y;
-            fc->fowCenter[2] = pc.pos.z; fc->fowCenter[3] = fogRadius;
-        } else { fc->fowCenter[3] = 0.f; }
-    } else { fc->fowCenter[3] = 0.f; }
+            fc->fowData[0] = pc.pos.x; fc->fowData[1] = pc.pos.y;
+            fc->fowData[2] = pc.pos.z; fc->fowData[3] = fogRadius;
+        } else { fc->fowData[3] = 0.f; }
+    } else { fc->fowData[3] = 0.f; }
 
     ctx->Unmap(cbFrame, 0);
 

@@ -7,25 +7,41 @@
 
 // ── tickCamera ────────────────────────────────────────────────────────────────
 // Two modes:
-//   POSSESS: camera smoothly follows a creature (playerID is set)
-//   FREE:    WASD/QF keyboard movement in the camera's local frame
+//   POSSESS: camera translates rigidly with the creature; angle and distance
+//            are frozen at whatever they were when possession began. The offset
+//            (camera world-pos minus creature world-pos) is recorded on the
+//            first tick after playerID is set and held constant thereafter.
+//   FREE:    WASD/QF keyboard movement in the camera's local frame.
 void Renderer::tickCamera(float dt, const World& world) {
 
     if (playerID != INVALID_ID) {
         auto it = world.idToIndex.find(playerID);
         if (it == world.idToIndex.end() || !world.creatures[it->second].alive) {
-            playerID = INVALID_ID;  // creature died — drop back to free cam
+            // Creature died — drop back to free cam and forget the offset.
+            playerID        = INVALID_ID;
+            hasPossessOffset = false;
             return;
         }
         const Creature& creature = world.creatures[it->second];
 
-        // Target: trail behind and above the creature
-        float forwardX = std::sin(creature.yaw);
-        float forwardZ = std::cos(creature.yaw);
+        // ── Record the fixed offset the first time we follow this creature ──────
+        // We capture whatever angle and distance the player was at so possession
+        // feels like "grabbing onto" the creature rather than snapping to a preset.
+        if (!hasPossessOffset) {
+            possessOffset.x = camera.pos.x - creature.pos.x;
+            possessOffset.y = camera.pos.y - creature.pos.y;
+            possessOffset.z = camera.pos.z - creature.pos.z;
+            hasPossessOffset = true;
+        }
+
+        // ── Translate camera to maintain the fixed offset ─────────────────────
+        // Target is simply the creature's current position + the frozen offset.
+        // Smooth approach (exponential lag) avoids jarring teleports if the
+        // creature moves very fast or we just started following it.
         Float3 target = {
-            creature.pos.x - forwardX * camera.follow_dist,
-            creature.pos.y + camera.follow_dist,
-            creature.pos.z - forwardZ * camera.follow_dist
+            creature.pos.x + possessOffset.x,
+            creature.pos.y + possessOffset.y,
+            creature.pos.z + possessOffset.z,
         };
 
         // Exponential smooth approach: blend = 1 - e^(-speed*dt)
@@ -35,17 +51,11 @@ void Renderer::tickCamera(float dt, const World& world) {
         camera.pos.y += (target.y - camera.pos.y) * blend;
         camera.pos.z += (target.z - camera.pos.z) * blend;
 
-        if (!lockYawFollow) {
-            // Aim camera at the creature
-            Float3 look = normalise3(
-                creature.pos.x - camera.pos.x,
-                creature.pos.y - camera.pos.y,
-                creature.pos.z - camera.pos.z);
-            camera.yaw   = std::atan2(look.x, look.z);
-            camera.pitch = std::asin(std::clamp(look.y, -0.99f, 0.99f));
-        }
     }
     else {
+        // Clear offset state so the next possession starts fresh.
+        hasPossessOffset = false;
+
         // Free-look: WASD moves in the camera's local XZ plane; QF moves vertically
         float spd = camera.translation_speed * dt;
         Float3 f  = camera.forward();
@@ -63,6 +73,8 @@ void Renderer::tickCamera(float dt, const World& world) {
 
 // ── onMouseMove ───────────────────────────────────────────────────────────────
 // Right-button drag rotates the camera (yaw = left/right, pitch = up/down).
+// Works in both free-cam and possess mode so the player can look around a possessed
+// creature without the camera auto-correcting the angle.
 void Renderer::onMouseMove(int dx, int dy, bool rightDown) {
     if (!rightDown) return;
     camera.yaw   += dx * 0.003f;

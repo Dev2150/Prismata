@@ -215,12 +215,36 @@ int main(int, char**)
         // DataRecorder::tick() may or may not fire depending on its 1-Hz timer.
         g_recorder.tick(dt, g_world);
 
-        // ── Clear render targets ───────────────────────────────────────────
-        // Clear the back buffer to a dark blue-grey (matches the sky/ambient tone).
-        // Then bind it as the output RTV together with the depth-stencil view so
-        // the renderer's draw calls write colour and depth correctly.
-        const float cc[4] = {0.08f, 0.10f, 0.12f, 1.f};
-        g_pd3dDeviceContext->ClearRenderTargetView(g_mainRenderTargetView, cc);
+        // Sky colour: deep blue at night → orange at dawn/dusk → pale sky blue at noon.
+        // Matches the ambient/sun colours computed in Renderer_Frame.cpp so the
+        // horizon blends naturally into the background.
+        {
+            float tod = g_world.timeOfDay();   // [0,1)
+            float elev = -std::cos(tod * 2.f * 3.14159265f); // -1=night, +1=noon
+
+            // Night sky colour
+            float skyNight[3]   = {0.01f, 0.01f, 0.04f};
+            // Dawn/dusk horizon colour
+            float skyHorizon[3] = {0.30f, 0.15f, 0.08f};
+            // Daytime sky colour
+            float skyDay[3]     = {0.38f, 0.58f, 0.82f};
+
+            auto sStep = [](float lo, float hi, float x) {
+                float t = std::max(0.f, std::min(1.f, (x-lo)/(hi-lo)));
+                return t*t*(3.f-2.f*t);
+            };
+            float h1 = sStep(-0.15f, 0.20f, elev);  // night→horizon
+            float h2 = sStep( 0.15f, 0.55f, elev);  // horizon→day
+
+            float r = skyNight[0] + (skyHorizon[0]-skyNight[0])*h1 + (skyDay[0]-skyHorizon[0])*h2;
+            float g = skyNight[1] + (skyHorizon[1]-skyNight[1])*h1 + (skyDay[1]-skyHorizon[1])*h2;
+            float b = skyNight[2] + (skyHorizon[2]-skyNight[2])*h1 + (skyDay[2]-skyHorizon[2])*h2;
+
+            const float cc[4] = {r, g, b, 1.f};
+            g_pd3dDeviceContext->ClearRenderTargetView(g_mainRenderTargetView, cc);
+        }
+
+
         g_pd3dDeviceContext->OMSetRenderTargets(1, &g_mainRenderTargetView, g_renderer.depthDSV);
         if (g_renderer.depthDSV)
             g_pd3dDeviceContext->ClearDepthStencilView(

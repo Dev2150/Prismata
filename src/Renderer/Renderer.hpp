@@ -1,3 +1,47 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// ── MENTAL MODEL: What is a GPU and why does any of this exist? ──────────────
+//
+// Your CPU runs your C++ code: one instruction at a time (roughly), smart,
+// flexible, handles complex logic. It has maybe 8-16 cores.
+//
+// Your GPU is completely different: it has THOUSANDS of tiny dumb cores that
+// all run the SAME simple program simultaneously. That program is called a
+// "shader". The GPU is fast at doing the same math on millions of things at
+// once (like computing the colour of every pixel on screen in parallel).
+//
+// The problem: CPU and GPU are separate chips with separate memory.
+// To draw anything, you must:
+//   1. Describe your geometry to the GPU (upload vertex positions into a buffer)
+//   2. Tell the GPU what program to run on that geometry (compile + set shaders)
+//   3. Tell the GPU how to interpret your data (input layout)
+//   4. Issue a draw call ("GPU, go draw 6000 triangles using those buffers")
+//
+// D3D11 (DirectX 11) is Microsoft's graphics API for talking to the GPU.
+// Every weirdly-named thing in this file is just a step in that pipeline.
+
+// ── MENTAL MODEL: The rendering pipeline ────────────────────────────────────
+//
+// When you call Draw(), the GPU runs this sequence automatically:
+//
+//  Your vertex buffer (list of XYZ positions)
+//       │
+//       ▼
+//  [Vertex Shader] ← runs once per vertex, on the GPU, in parallel
+//    Transforms 3D world position → 2D screen position
+//    Written in HLSL (a C-like language that compiles to GPU instructions)
+//       │
+//       ▼
+//  [Rasterisation] ← GPU figures out which pixels each triangle covers
+//       │
+//       ▼
+//  [Pixel Shader] ← runs once per pixel, on the GPU, in parallel
+//    Decides the final colour of each pixel
+//    Written in HLSL
+//       │
+//       ▼
+//  Back buffer (a texture in GPU memory that becomes the image you see)
+
+
 #pragma once
 #include <d3d11.h>
 #include "../Math.hpp"
@@ -97,12 +141,22 @@ struct Renderer {
     float    waterLevel   = 0.45f;       // Y-height of the water plane
     bool     lockYawFollow= false;       // when true, following a creature won't rotate the camera
 
+    // ── Creature possession: translation-only follow ───────────────────────────
+    // When a creature is possessed we record the camera→creature offset at the
+    // moment possession begins and maintain that fixed offset for the duration.
+    // This means the camera never rotates or zooms — it just translates in lockstep.
+    Float3 possessOffset    = {0.f, 0.f, 0.f};  // camera pos - creature pos at start
+    bool   hasPossessOffset = false;             // true once offset has been captured
+
     // ── Per-frame constant buffer layout (matches HLSL cbuffer) ───────────────
+    // IMPORTANT: must remain 16-byte aligned throughout; add fields in float4 blocks.
     struct alignas(16) FrameConstants {
-        float viewProj[4][4];   // row-major
-        float camPos[4];        // w unused
-        float lightDir[4];      // w unused
-        float fowCenter[4];     // xyz=center, w=radius (0 = disabled)
+        float viewProj[4][4];   // 64 bytes – row-major View*Projection
+        float camPos[4];        // 16 bytes – camera world position (w unused)
+        float lightDir[4];      // 16 bytes – sun direction (FROM sun TOWARD scene, w unused)
+        float fowData[4];       // 16 bytes – fog of war: xyz=player pos, w=radius (0=off)
+        float sunColor[4];      // 16 bytes – rgb=sun light tint, w=timeOfDay [0,1]
+        float ambientColor[4];  // 16 bytes – rgb=sky/ambient light, w=unused
     };
 
     // ── Vertex layouts ─────────────────────────────────────────────────────────

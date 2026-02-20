@@ -62,11 +62,7 @@ void SimUI::draw(World& world, DataRecorder& rec, Renderer& rend) {
     drawSpeciesPanel(world);
     drawGeneCharts(world, rec);
     drawPlayerPanel(world, rend);
-
-    ImGui::Begin("Planet");
     g_planet.drawDebugUI();
-    ImGui::End();
-    //TODO: make a new draw
 
     if (showSettings) drawSettingsWindow(world, rend);
 

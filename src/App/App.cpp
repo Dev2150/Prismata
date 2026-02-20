@@ -105,7 +105,7 @@ int RunApplication()
 
     PlanetConfig pcfg;
     pcfg.radius          = 1000.f;
-    pcfg.center          = {0.f, -1800.f, 0.f};   // planet below the flat world
+    pcfg.center          = {0.f, 1800.f, 0.f};   // planet below the flat world
     pcfg.heightScale     = 120.f;     // max terrain height above sea level
     pcfg.maxDepth        = 16;        // deepest LOD level (~1.5m patches at max)
     pcfg.patchRes        = 17;        // 17×17 vertices per patch (16×16 quads)
@@ -238,6 +238,10 @@ int RunApplication()
         // (instanced triangle strips with alpha blending).
         float aspect = vp.Width / std::max(vp.Height, 1.f);
         g_renderer.render(g_world, aspect);
+
+        if (g_renderer.depthDSV)
+            g_pd3dDeviceContext->ClearDepthStencilView(
+                g_renderer.depthDSV, D3D11_CLEAR_DEPTH, 1.f, 0);
 
         g_planet.render(g_renderer.camera, aspect,
                 g_world.timeOfDay(), g_world.simTime);

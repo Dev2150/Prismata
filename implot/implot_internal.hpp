@@ -38,7 +38,7 @@
 
 #ifndef IMGUI_DISABLE
 #include <time.h>
-#include "imgui_internal.h"
+#include "imgui_internal.hpp"
 
 // Support for pre-1.84 versions. ImPool's GetSize() -> GetBufSize()
 #if (IMGUI_VERSION_NUM < 18303)

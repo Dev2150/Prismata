@@ -12,10 +12,10 @@
 //   DataRecorder – 1-Hz population statistics ring buffer (feeds ImPlot graphs)
 //   SimUI      – all Dear ImGui panels (controls, inspector, charts, etc.)
 // ─────────────────────────────────────────────────────────────────────────────
-#include "imgui.h"
-#include "imgui_impl_win32.h"
-#include "imgui_impl_dx11.h"
-#include "implot.h"
+#include "imgui.hpp"
+#include "imgui_impl_win32.hpp"
+#include "imgui_impl_dx11.hpp"
+#include "implot.hpp"
 #include <d3d11.h>
 #include <tchar.h>
 #include <chrono>

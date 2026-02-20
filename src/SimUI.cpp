@@ -1,6 +1,6 @@
 #include "SimUI.hpp"
-#include "imgui.h"
-#include "implot.h"
+#include "imgui.hpp"
+#include "implot.hpp"
 #include <cstdio>
 #include <cstring>
 #include <algorithm>

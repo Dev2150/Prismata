@@ -357,6 +357,15 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
             // ── Space bar: toggle pause ──────────────────────────────────────
             if (msg == WM_KEYDOWN && wParam == VK_SPACE)
                 g_world.cfg.paused = !g_world.cfg.paused;
+
+            // ── +/= key or numpad +: increase simulation speed ───────────────
+            if (msg == WM_KEYDOWN && (wParam == VK_OEM_PLUS || wParam == VK_ADD)) {
+                g_world.cfg.simSpeed = std::min(20.f, g_world.cfg.simSpeed * 1.25f);
+            }
+            // ── - key or numpad -: decrease simulation speed ─────────────────
+            if (msg == WM_KEYDOWN && (wParam == VK_OEM_MINUS || wParam == VK_SUBTRACT)) {
+                g_world.cfg.simSpeed = std::max(0.1f, g_world.cfg.simSpeed / 1.25f);
+            }
         }
         return 0;
 

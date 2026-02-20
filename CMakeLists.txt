@@ -6,19 +6,25 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # ── Sources ────────────────────────────────────────────────────────────────────
 set(SOURCES
-        src/main.cpp
-        src/App.cpp
-        src/App_Globals.cpp
-        src/App_D3D.cpp
-        src/App_WndProc.cpp
-        src/World.cpp
-        src/Renderer/Renderer_Camera.cpp
-        src/Renderer/Renderer_Creatures.cpp
-        src/Renderer/Renderer_Frame.cpp
-        src/Renderer/Renderer_Init.cpp
-        src/Renderer/Renderer_Overlays.cpp
-        src/Renderer/Renderer_Terrain.cpp
-        src/SimUI.cpp
+    src/main.cpp
+    src/App.cpp
+    src/App_Globals.cpp
+    src/App_D3D.cpp
+    src/App_WndProc.cpp
+    src/World_Gen.cpp
+    src/World_Terrain.cpp
+    src/World_Entities.cpp
+    src/World_Species.cpp
+    src/World_Perceive.cpp
+    src/World_Tick.cpp
+    src/World_Save_and_Load.cpp
+    src/Renderer/Renderer_Camera.cpp
+    src/Renderer/Renderer_Creatures.cpp
+    src/Renderer/Renderer_Frame.cpp
+    src/Renderer/Renderer_Init.cpp
+    src/Renderer/Renderer_Overlays.cpp
+    src/Renderer/Renderer_Terrain.cpp
+    src/SimUI.cpp
 
     # ImGui – place the imgui/ folder at the project root
     imgui/imgui.cpp
@@ -33,6 +39,7 @@ set(SOURCES
     implot/implot.cpp
     implot/implot_items.cpp
     implot/implot_demo.cpp
+
 )
 
 add_executable(Prismata WIN32 ${SOURCES})

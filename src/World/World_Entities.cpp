@@ -1,5 +1,6 @@
 #include <random>
 #include "World.hpp"
+#include "World_Planet.hpp"
 #include "Sim/Creature.hpp"
 
 // ── Entity management ─────────────────────────────────────────────────────────
@@ -110,12 +111,10 @@ void World::growPlants(float dt) {
         }
     }
 
-    // Spontaneous new plant spawning up to a density cap.
-    // The fractional part of (plantGrowRate * dt) is treated as a probability
-    // so the expected spawn rate is exactly plantGrowRate plants/second on average.
+    // Spontaneous new plants on land
     int alive = 0;
     for (const auto& p : plants) alive += p.alive ? 1 : 0;
-    int cap = worldCX * worldCZ * CHUNK_SIZE / 4;   // roughly one plant per 4 cells
+    const int cap = 3000;
     if (alive < cap) {
         // Integer portion always spawns; fractional part spawns with its probability
         int toSpawn = (int)(cfg.plantGrowRate * dt)
@@ -123,10 +122,8 @@ void World::growPlants(float dt) {
                                          - (int)(cfg.plantGrowRate * dt)) ? 1 : 0);
         RNG& rng = globalRNG();
         for (int i = 0; i < toSpawn; i++) {
-            float px = rng.range(0.f, (float)(worldCX * CHUNK_SIZE));
-            float pz = rng.range(0.f, (float)(worldCZ * CHUNK_SIZE));
-            if (!isWater(px, pz))
-                spawnPlant(snapToSurface(px, pz));
+            Vec3 pos = g_planet_surface.randomLandPos(globalRNG());
+            spawnPlant(pos);
         }
     }
 

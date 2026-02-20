@@ -1,10 +1,8 @@
 #include "Renderer.hpp"
+#include "World/World.hpp"
+#include "World/World_Planet.hpp"
 #include <cmath>
 #include <algorithm>
-#include "World/World.hpp"
-
-// ── Renderer_Camera.cpp ───────────────────────────────────────────────────────
-// Covers: tickCamera, onMouseMove, onKey, screenToTerrain.
 
 // ── tickCamera ────────────────────────────────────────────────────────────────
 // Two modes:
@@ -57,7 +55,9 @@ void Renderer::tickCamera(float dt, const World& world) {
         // Clear offset state so the next possession starts fresh.
         hasPossessOffset = false;
 
-        // Free-look: WASD moves in the camera's local XZ plane; QF moves vertically
+        // ── Planet-surface free cam ────────────────────────────────────────────
+        // WASD/QF move in the camera's local frame. The camera is not clamped to
+        // the planet surface — it can orbit freely (useful for space view).
         float spd = camera.translation_speed * dt;
         Float3 f  = camera.forward();
         // Right vector: perpendicular to forward in the XZ plane (no vertical component)
@@ -80,7 +80,7 @@ void Renderer::onMouseMove(int dx, int dy, bool rightDown) {
     if (!rightDown) return;
     camera.yaw   += dx * 0.003f;
     camera.pitch += dy * 0.003f;
-    camera.pitch  = std::max(-1.5f, std::min(0.2f, camera.pitch));  // clamp to avoid gimbal flip
+    camera.pitch  = std::max(-1.5f, std::min(1.5f, camera.pitch));  // full sphere allowed
 }
 
 // ── onKey ─────────────────────────────────────────────────────────────────────
@@ -97,16 +97,10 @@ void Renderer::onKey(int vk, bool down) {
     }
 }
 
-// ── screenToTerrain ───────────────────────────────────────────────────────────
-// Converts a 2D screen pixel (mx, my) into a 3D world position on the terrain.
-//
-// Steps:
-//   1. Convert pixel → NDC (Normalised Device Coordinates, range [-1,1])
-//   2. Unproject two NDC points (at near and far clip planes) → world space
-//      using the inverse view-projection matrix
-//   3. Build a ray from near → far
-//   4. March along the ray until it drops below the terrain height field
-//   5. Binary-search the last step for a more precise hit point
+// ── screenToTerrain  ─────────────────────────────────────────
+// Shoots a ray from the camera through the screen pixel. Intersects with a
+// sphere of radius (planet_radius + max_height_scale) to find the approximate
+// surface. We then binary-search along the ray for the exact displaced surface.
 bool Renderer::screenToTerrain(float mx, float my, float W, float H,
                                const World& world, Vec3& outPos, uint8_t& outMat) const {
     if (W < 1.f || H < 1.f) return false;
@@ -135,37 +129,62 @@ bool Renderer::screenToTerrain(float mx, float my, float W, float H,
     if (dl < 1e-6f) return false;
     dx /= dl; dy /= dl; dz /= dl;  // normalise ray direction
 
-    // Coarse ray march: walk 1 metre at a time until ray dips below terrain
-    float maxT = 800.f, step = 1.0f, prevT = 0.f;
-    float worldMaxX = (float)(world.worldCX * CHUNK_SIZE - 1);
-    float worldMaxZ = (float)(world.worldCZ * CHUNK_SIZE - 1);
+    // Ray–sphere intersection with the outer bounding sphere
+    // (planet radius + max height scale, with a small margin).
+    const Vec3& pc = g_planet_surface.center;
+    float pr = g_planet_surface.radius + g_planet_surface.heightScale + 10.f;
 
-    for (float t = step; t < maxT; t += step) {
-        float rx = near4.x + dx * t;
-        float ry = near4.y + dy * t;
-        float rz = near4.z + dz * t;
+    float ocx = near4.x - pc.x, ocy = near4.y - pc.y, ocz = near4.z - pc.z;
+    float b   = ocx*dx + ocy*dy + ocz*dz;
+    float c2  = ocx*ocx + ocy*ocy + ocz*ocz - pr*pr;
+    float disc = b*b - c2;
+    if (disc < 0.f) return false;   // ray misses the planet entirely
 
-        if (rx < 0.f || rx > worldMaxX || rz < 0.f || rz > worldMaxZ) {
-            prevT = t; continue;
-        }
+    float sqrtDisc = std::sqrt(disc);
+    float t0 = -b - sqrtDisc;
+    float t1 = -b + sqrtDisc;
+    // We want the first positive intersection (entry point)
+    float tHit = (t0 > 0.f) ? t0 : t1;
+    if (tHit < 0.f) return false;
 
-        if (ry <= world.heightAt(rx, rz)) {
-            // Binary search between prevT and t for a ~1/256 m precision hit
-            float lo = prevT, hi = t;
-            for (int iter = 0; iter < 8; iter++) {
-                float mid = (lo + hi) * 0.5f;
-                float mry = near4.y + dy * mid;
-                float mth = world.heightAt(near4.x + dx*mid, near4.z + dz*mid);
-                if (mry <= mth) hi = mid;
-                else             lo = mid;
-            }
-            float fx = near4.x + dx * hi;
-            float fz = near4.z + dz * hi;
-            outPos = {fx, world.heightAt(fx, fz), fz};
-            outMat = world.materialAt(fx, fz);
-            return true;
-        }
-        prevT = t;
+    // Binary search along the ray between tHit and tHit + 2*height_scale
+    // to find where the ray first dips below the displaced surface.
+    float lo = std::max(0.f, tHit - g_planet_surface.heightScale);
+    float hi = tHit + g_planet_surface.heightScale * 2.f;
+
+    for (int iter = 0; iter < 24; iter++) {
+        float mid = (lo + hi) * 0.5f;
+        float rx = near4.x + dx*mid;
+        float ry = near4.y + dy*mid;
+        float rz = near4.z + dz*mid;
+        Vec3  rpos = {rx, ry, rz};
+
+        // Check if this point is inside the displaced surface
+        Vec3 dir = (rpos - pc).normalised();
+        float surfR = g_planet_surface.radius
+                    + g_planet_surface.noiseHeight(rpos);
+        float rayR  = (rpos - pc).len();
+
+        if (rayR < surfR)
+            hi = mid;   // inside surface: hit is earlier
+        else
+            lo = mid;   // outside: hit is later
     }
-    return false;  // ray aimed at sky
+    float fx = near4.x + dx * hi;
+    float fy = near4.y + dy * hi;
+    float fz = near4.z + dz * hi;
+    outPos = {fx, fy, fz};
+
+    // Material: use biome colour from noise height
+    float h = g_planet_surface.noiseHeight(outPos);
+    float normH = (h + g_planet_surface.heightScale * 0.3f)
+                / (g_planet_surface.heightScale * 1.3f);
+    normH = std::max(0.f, std::min(1.f, normH));
+    if      (normH < 0.23f) outMat = 3;   // water
+    else if (normH < 0.26f) outMat = 2;   // sand/beach
+    else if (normH < 0.56f) outMat = 0;   // grass
+    else if (normH < 0.75f) outMat = 1;   // rock
+    else                    outMat = 4;   // snow
+
+    return true;
 }

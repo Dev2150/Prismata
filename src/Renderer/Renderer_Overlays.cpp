@@ -1,4 +1,6 @@
 #include "Renderer.hpp"
+#include "World/World.hpp"
+#include "World/World_Planet.hpp"
 #include <cmath>
 #include <vector>
 #include <algorithm>
@@ -29,35 +31,54 @@ void Renderer::renderFOVCone(const World& world) {
     if (!c.alive) return;
 
     float range   = c.genome.visionRange();
-    float halfFOV = c.genome.visionFOV() * 3.14159265f / 360.f;  // half-angle in radians
-    float cx      = c.pos.x;
-    float cz      = c.pos.z;
-    float cy      = c.pos.y;
-    float startAng = c.yaw - halfFOV;
-    float endAng   = c.yaw + halfFOV;
-    float maxW     = (float)(world.worldCX * CHUNK_SIZE - 1);
-    float maxH     = (float)(world.worldCZ * CHUNK_SIZE - 1);
+    float halfFOV = c.genome.visionFOV() * 3.14159265f / 360.f;
+
+    // Build the creature's local tangent frame on the sphere surface.
+    Vec3 n = g_planet_surface.normalAt(c.pos);  // outward normal = "up"
+
+    // Forward vector in the tangent plane (from yaw)
+    Vec3 rawFwd = {std::sin(c.yaw), 0.f, std::cos(c.yaw)};
+    Vec3 fwd = g_planet_surface.projectToTangent(c.pos, rawFwd).normalised();
+
+    // Right vector = normal × forward
+    Vec3 right = {
+        n.y*fwd.z - n.z*fwd.y,
+        n.z*fwd.x - n.x*fwd.z,
+        n.x*fwd.y - n.y*fwd.x,
+    };
+    right = right.normalised();
+
+    float startAng = -halfFOV;
+    float endAng   =  halfFOV;
 
     std::vector<SimpleVertex> verts;
     verts.reserve(FOV_CONE_SEGS * 3);
+
+    // Centre point lifted slightly above the surface along the normal
+    Vec3 cen = c.pos + n * 0.15f;
 
     for (int i = 0; i < FOV_CONE_SEGS; i++) {
         float a0 = startAng + (endAng - startAng) * (float)i       / FOV_CONE_SEGS;
         float a1 = startAng + (endAng - startAng) * (float)(i + 1) / FOV_CONE_SEGS;
 
-        // Polar → Cartesian: sin/cos convert angle+radius to X/Z offsets
-        float x0 = std::clamp(cx + std::sin(a0) * range, 0.f, maxW);
-        float z0 = std::clamp(cz + std::cos(a0) * range, 0.f, maxH);
-        float x1 = std::clamp(cx + std::sin(a1) * range, 0.f, maxW);
-        float z1 = std::clamp(cz + std::cos(a1) * range, 0.f, maxH);
+        // Arc points in the tangent plane, then walk along the sphere surface
+        // by taking `range` metres along the great-circle arc.
+        auto arcPoint = [&](float ang) -> Vec3 {
+            // Direction in tangent plane
+            Vec3 dir = fwd * std::cos(ang) + right * std::sin(ang);
+            // Walk `range` metres along the sphere surface starting from c.pos
+            // using the planet's snapToSurface to stay on the displaced sphere.
+            Vec3 walked = c.pos + dir * range;
+            Vec3 snapped = g_planet_surface.snapToSurface(walked);
+            return snapped + g_planet_surface.normalAt(snapped) * 0.15f;
+        };
 
-        // Snap arc points to terrain height, lifted slightly so the cone is visible
-        float y0 = world.heightAt(x0, z0) + 0.12f;
-        float y1 = world.heightAt(x1, z1) + 0.12f;
+        Vec3 p0 = arcPoint(a0);
+        Vec3 p1 = arcPoint(a1);
 
-        verts.push_back({cx, cy + 0.12f, cz});  // centre
-        verts.push_back({x0, y0,         z0});   // arc point i
-        verts.push_back({x1, y1,         z1});   // arc point i+1
+        verts.push_back({cen.x, cen.y, cen.z});
+        verts.push_back({p0.x,  p0.y,  p0.z });
+        verts.push_back({p1.x,  p1.y,  p1.z });
     }
 
     // Upload CPU-built vertices to the dynamic GPU buffer

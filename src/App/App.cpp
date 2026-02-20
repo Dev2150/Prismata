@@ -6,7 +6,8 @@
 #include <algorithm>
 #include <cmath>
 
-#include "App_Globals.hpp"
+#include "App/App_Globals.hpp"
+#include "App/App_Globals_Planet.hpp"
 
 int RunApplication()
 {
@@ -95,6 +96,9 @@ int RunApplication()
     int initW = initialRc.right  - initialRc.left;
     int initH = initialRc.bottom - initialRc.top;
 
+    // Renderer init: compiles shaders, creature billboard buffers, depth buffer.
+    // Flat terrain chunk mesh building is effectively skipped because
+    // Chunk::dirty is set to false during generate() in planet mode.
     if (!g_renderer.init(g_pd3dDevice, g_pd3dDeviceContext, initW, initH))
     {
         OutputDebugStringA("FATAL: Renderer initialization failed!\n");
@@ -103,9 +107,14 @@ int RunApplication()
         return 1;
     }
 
+    // Disable flat-world overlays that don't apply to the planet
+    g_renderer.showWater   = false;   // no flat water plane
+    g_renderer.showFOVCone = true;    // FOV cone still drawn (planet-draped version)
+
+    // ── Planet renderer ───────────────────────────────────────────────────────
     PlanetConfig pcfg;
     pcfg.radius          = 1000.f;
-    pcfg.center          = {0.f, 1800.f, 0.f};   // planet below the flat world
+    pcfg.center          = {0.f, -1800.f, 0.f};   // planet below the flat world
     pcfg.heightScale     = 120.f;     // max terrain height above sea level
     pcfg.maxDepth        = 16;        // deepest LOD level (~1.5m patches at max)
     pcfg.patchRes        = 17;        // 17×17 vertices per patch (16×16 quads)
@@ -116,8 +125,10 @@ int RunApplication()
         // handle error
     }
 
-    // ── Auto-load default settings ────────────────────────────────────────────
-    // Attempt to load "default.json" on startup; silently ignore if missing.
+    // ── Camera: start above the planet surface ────────────────────────────────
+    SetupPlanetCamera(g_renderer);
+
+    // ── Load default settings ─────────────────────────────────────────────────
     g_ui.loadSettingsFromFile("default.json", g_world, g_renderer);
 
     // ── Main loop ─────────────────────────────────────────────────────────────
@@ -188,30 +199,18 @@ int RunApplication()
         // DataRecorder::tick() may or may not fire depending on its 1-Hz timer.
         g_recorder.tick(dt, g_world);
 
-        // Sky colour: deep blue at night → orange at dawn/dusk → pale sky blue at noon.
-        // Matches the ambient/sun colours computed in Renderer_Frame.cpp so the
-        // horizon blends naturally into the background.
+        // ── Sky clear colour (space black near camera, atmospheric at edges) ──
         {
             float time_of_day = g_world.timeOfDay();   // [0,1)
             float elev = -std::cos(time_of_day * 2.f * 3.14159265f); // -1=night, +1=noon
 
-            // Night sky colour
-            float skyNight[3]   = {0.01f, 0.01f, 0.04f};
-            // Dawn/dusk horizon colour
-            float skyHorizon[3] = {0.30f, 0.15f, 0.08f};
-            // Daytime sky colour
-            float skyDay[3]     = {0.38f, 0.58f, 0.82f};
+            float skyNight[3]   = {0.00f, 0.00f, 0.02f};  // near-black space
+            float skyDay[3]     = {0.02f, 0.04f, 0.10f};  // very dark space blue
 
-            auto sStep = [](float lo, float hi, float x) {
-                float t = std::max(0.f, std::min(1.f, (x-lo)/(hi-lo)));
-                return t*t*(3.f-2.f*t);
-            };
-            float h1 = sStep(-0.15f, 0.20f, elev);  // night→horizon
-            float h2 = sStep( 0.15f, 0.55f, elev);  // horizon→day
-
-            float r = skyNight[0] + (skyHorizon[0]-skyNight[0])*h1 + (skyDay[0]-skyHorizon[0])*h2;
-            float g = skyNight[1] + (skyHorizon[1]-skyNight[1])*h1 + (skyDay[1]-skyHorizon[1])*h2;
-            float b = skyNight[2] + (skyHorizon[2]-skyNight[2])*h1 + (skyDay[2]-skyHorizon[2])*h2;
+            float t = std::max(0.f, std::min(1.f, (elev + 1.f) * 0.5f));
+            float r = skyNight[0] + (skyDay[0]-skyNight[0])*t;
+            float g = skyNight[1] + (skyDay[1]-skyNight[1])*t;
+            float b = skyNight[2] + (skyDay[2]-skyNight[2])*t;
 
             const float cc[4] = {r, g, b, 1.f};
             g_pd3dDeviceContext->ClearRenderTargetView(g_mainRenderTargetView, cc);
@@ -237,14 +236,25 @@ int RunApplication()
         // Renders terrain (indexed triangle lists) then creature billboards
         // (instanced triangle strips with alpha blending).
         float aspect = vp.Width / std::max(vp.Height, 1.f);
-        g_renderer.render(g_world, aspect);
 
+        // ── 3-D render passes ──────────────────────────────────────────────────
+        // Planet terrain + atmosphere (PlanetRenderer, uses its own far-Z)
+        g_planet.render(g_renderer.camera, aspect,
+                        g_world.timeOfDay(), g_world.simTime);
+
+        // Clear depth again so creature billboards and FOV cone are drawn
+        //    on top of the planet surface without z-fighting.
         if (g_renderer.depthDSV)
             g_pd3dDeviceContext->ClearDepthStencilView(
                 g_renderer.depthDSV, D3D11_CLEAR_DEPTH, 1.f, 0);
 
-        g_planet.render(g_renderer.camera, aspect,
-                g_world.timeOfDay(), g_world.simTime);
+        // Creature billboards + FOV cone (Renderer, uses creature positions
+        //    which are now 3-D sphere-surface points).
+        //    We call renderCreaturesAndOverlays() — a new thin wrapper that skips
+        //    flat terrain and water and only draws creatures + FOV.
+        //    Fallback: call render() with waterBuilt=true so water is skipped,
+        //    and with chunk meshes having 0 indices (they were never built).
+        g_renderer.render(g_world, aspect);
 
         // ── ImGui / ImPlot UI render pass ──────────────────────────────────
         // NewFrame() must be called after the platform back-ends have processed

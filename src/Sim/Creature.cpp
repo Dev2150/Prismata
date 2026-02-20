@@ -1,7 +1,7 @@
 #include "Creature.hpp"
 #include "World/World.hpp"
+#include "World/World_Planet.hpp"
 
-// ── Creature tick (defined in World.cpp because it accesses World internals) ──
 float Creature::tick(float dt, World& world) {
     if (!alive) return 0.f;
 
@@ -15,7 +15,8 @@ float Creature::tick(float dt, World& world) {
 
     Drive active = needs.activeDrive();  // which drive governs behaviour this frame
     float spd    = speedCap();           // energy-throttled top speed
-    float slope  = world.slopeAt(pos.x, pos.z);
+    // Use 3-D slope from planet surface
+    float slope = world.slopeAt3D(pos);
 
     // ── Behaviour state machine ───────────────────────────────────────────────
     // Each case sets `behavior`, then either steers the creature or modifies
@@ -67,7 +68,18 @@ float Creature::tick(float dt, World& world) {
         } else {
             // No food visible: wander randomly (Gaussian step so direction varies smoothly)
             behavior = BehaviorState::Idle;
-            Vec3 wander = {globalRNG().normal(0,1), 0, globalRNG().normal(0,1)};
+            // Random wander on the planet: generate a random tangent-plane direction
+            Vec3 n = world.normalAt(pos);
+            Vec3 arb = (std::abs(n.y) < 0.9f) ? Vec3{0.f, 1.f, 0.f} : Vec3{1.f, 0.f, 0.f};
+            Vec3 t1 = Vec3{n.y*arb.z - n.z*arb.y,
+                           n.z*arb.x - n.x*arb.z,
+                           n.x*arb.y - n.y*arb.x}.normalised();
+            Vec3 t2 = Vec3{n.y*t1.z - n.z*t1.y,
+                           n.z*t1.x - n.x*t1.z,
+                           n.x*t1.y - n.y*t1.x};
+            float rx = globalRNG().normal(0,1);
+            float rz = globalRNG().normal(0,1);
+            Vec3 wander = t1 * rx + t2 * rz;
             steerToward(pos + wander * 5.f, spd * 0.3f, dt);
         }
         break;
@@ -106,34 +118,41 @@ float Creature::tick(float dt, World& world) {
         break;
     }
 
-    // ── Apply movement ────────────────────────────────────────────────────────
+    // ── Planet-surface movement ───────────────────────────────────────────────
     if (vel.len2() > 0.001f) {
-        // Only move if the slope is navigable OR if movement reduces altitude
-        // (i.e., the creature is moving downhill; dot product check lets them slide down)
-        if (slope * (180.f / 3.14159f) < genome.maxSlope()
-            || vel.dot(pos - world.snapToSurface(pos.x + vel.x, pos.z + vel.z)) < 0) {
-            pos.x += vel.x * dt;
-            pos.z += vel.z * dt;
+        // Only traverse uphill if slope is within the genome's limit
+        bool canMove = (slope * (180.f / 3.14159f) < genome.maxSlope());
+
+        if (canMove) {
+            // Project velocity onto the tangent plane at current position so the
+            // creature slides along the sphere rather than drifting through it.
+            Vec3 tangentVel = g_planet_surface.projectToTangent(pos, vel);
+
+            // Integrate position
+            pos.x += tangentVel.x * dt;
+            pos.y += tangentVel.y * dt;
+            pos.z += tangentVel.z * dt;
         }
-        // Keep Y snapped to the terrain surface at all times
-        pos.y = world.heightAt(pos.x, pos.z);
+
+        // Always snap back to the displaced sphere surface (corrects floating/sinking).
+        pos = g_planet_surface.snapToSurface(pos);
+
+        // Update yaw: project the velocity onto the local tangent plane and
+        // compute the heading as an angle relative to an arbitrary "north" direction.
+        // We use the XZ component as an approximation (works well near the equator
+        // and top of the sphere where most creatures live).
+        float vxz = std::sqrt(vel.x*vel.x + vel.z*vel.z);
+        if (vxz > 0.01f)
+            yaw = std::atan2(vel.x, vel.z);
     }
 
-    // ── World boundary clamp ──────────────────────────────────────────────────
-    float maxX = (float)(world.worldCX * CHUNK_SIZE - 1);
-    float maxZ = (float)(world.worldCZ * CHUNK_SIZE - 1);
-    pos.x = std::clamp(pos.x, 0.f, maxX);
-    pos.z = std::clamp(pos.z, 0.f, maxZ);
-
     // ── Energy consumption ────────────────────────────────────────────────────
-    float spd2  = vel.len();     // actual achieved speed this frame
+    float spd2 = vel.len();
     float cost  = energyCost(spd2, slope, dt);
     energy     -= cost;
 
-    // ── Death conditions ──────────────────────────────────────────────────────
-    if (energy <= 0.f                       // starved to death
-     || age >= lifespan                     // died of old age
-     || needs.isCritical(Drive::Thirst))    // severe dehydration
+    // ── Death ─────────────────────────────────────────────────────────────────
+    if (energy <= 0.f || age >= lifespan || needs.isCritical(Drive::Thirst))
         alive = false;
 
     return cost;

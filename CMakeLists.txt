@@ -12,20 +12,24 @@ set(SOURCES
     src/App/App_D3D.cpp
     src/App/App_WndProc.cpp
     src/Core/RNG.hpp
+    src/Sim/Creature.cpp
+    src/UI/SimUI.cpp
+    src/World/World_Species.cpp
+    src/World/World_Tick.cpp
+    src/World/World_IO.cpp
+    src/World/World_Planet.cpp
     src/World/World_Gen.cpp
     src/World/World_Terrain.cpp
     src/World/World_Entities.cpp
-    src/World/World_Species.cpp
     src/World/World_Perceive.cpp
-    src/World/World_Tick.cpp
-    src/World/World_IO.cpp
     src/Renderer/Renderer_Camera.cpp
     src/Renderer/Renderer_Creatures.cpp
     src/Renderer/Renderer_Frame.cpp
     src/Renderer/Renderer_Init.cpp
     src/Renderer/Renderer_Overlays.cpp
     src/Renderer/Renderer_Terrain.cpp
-    src/UI/SimUI.cpp
+    src/Renderer/Planet/PlanetQuadTree.cpp
+    src/Renderer/Planet/PlanetRenderer.cpp
 
     # ImGui – place the imgui/ folder at the project root
     imgui/imgui.cpp
@@ -40,9 +44,6 @@ set(SOURCES
     implot/implot.cpp
     implot/implot_items.cpp
     implot/implot_demo.cpp
-        src/Sim/Creature.cpp
-        src/Renderer/Planet/PlanetQuadTree.cpp
-        src/Renderer/Planet/PlanetRenderer.cpp
 )
 
 add_executable(Prismata WIN32 ${SOURCES})

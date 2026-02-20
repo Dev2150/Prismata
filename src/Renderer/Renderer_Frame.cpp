@@ -66,9 +66,9 @@ static void computeDayNightLighting(float timeOfDay,
     static const float colHorizon[3]  = {1.00f, 0.45f, 0.10f}; // orange glow
     static const float colDay[3]      = {1.00f, 0.95f, 0.80f}; // warm white
 
-    float aboveHorizon = std::max(0.f, elevation);          // 0 at night, 1 at noon
-    float horizonBlend = smoothStep(-0.15f, 0.25f, elevation); // 0=night, 1=fully day
-    float dayBlend     = smoothStep( 0.15f, 0.55f, elevation); // 0=horizon, 1=full day
+    float aboveHorizon = std::max(0.f, elevation);
+    float horizonBlend = smoothStep(-0.15f, 0.25f, elevation);
+    float dayBlend     = smoothStep( 0.15f, 0.55f, elevation);
 
     float midSun[3];
     lerpColor(colNight, colHorizon, horizonBlend, midSun);
@@ -155,17 +155,17 @@ void Renderer::updateFrameConstants(const World& world, float aspect) {
 }
 
 // ── render ────────────────────────────────────────────────────────────────────
-// Main per-frame draw sequence. Called once per frame after the scene is updated.
-// The GPU is a state machine: each ctx->Set*() call changes a setting that
-// persists until overridden. The sub-renderers each restore any state they change.
+// Planet mode: skip terrain + water; only draw FOV cone + creature billboards.
 void Renderer::render(const World& world, float aspectRatio) {
-    // Rebuild any terrain chunk meshes that have been flagged dirty
+    // Flat chunk meshes are never built in planet mode (dirty=false, no geometry).
+    // The loop below is effectively a no-op but kept so the code compiles
+    // unchanged if someone re-enables flat terrain later.
     for (int cz = 0; cz < world.worldCZ; cz++) {
         for (int cx2 = 0; cx2 < world.worldCX; cx2++) {
             int i2 = cz * world.worldCX + cx2;
             const Chunk& ch = world.chunks[i2];
-            bool needsBuild = ch.dirty || (i2 >= (int)chunkMeshes.size()) || !chunkMeshes[i2].built;
-            if (needsBuild) buildChunkMesh(world, cx2, cz);
+            if (ch.dirty && (i2 < (int)chunkMeshes.size()) && !chunkMeshes[i2].built)
+                buildChunkMesh(world, cx2, cz);
             const_cast<Chunk&>(ch).dirty = false;
         }
     }
@@ -173,11 +173,10 @@ void Renderer::render(const World& world, float aspectRatio) {
     updateFrameConstants(world, aspectRatio);
 
     // Draw order matters: opaque first, then transparent overlays on top
-    ctx->RSSetState(wireframe ? rsWireframe : rsSolid);
+    ctx->RSSetState(rsSolid);
     ctx->OMSetDepthStencilState(dssDepth, 0);
-    renderTerrain(world);                           // 1. opaque terrain
-
-    if (showWater   && !wireframe) renderWater(world);     // 2. animated water
-    if (showFOVCone && !wireframe) renderFOVCone(world);   // 3. FOV overlay
-    renderCreatures(world);                         // 4. creature billboards
+    if (showFOVCone && !wireframe)
+        renderFOVCone(world);
+    // creature billboards
+    renderCreatures(world);
 }

@@ -1,4 +1,5 @@
 #include "World.hpp"
+#include "World_Planet.hpp"
 
 // ── Perception ────────────────────────────────────────────────────────────────
 // Updates a creature's perception cache with the nearest predator, prey, mate,
@@ -24,6 +25,13 @@ void World::perceive(Creature& c) {
     c.nearestFoodDist  = 1e9f;
     c.nearestWaterDist = 1e9f;
 
+    // Build the creature's local facing vector.
+    // yaw is measured relative to the planet's XZ plane (atan2 of velocity).
+    // On the sphere top hemisphere this is a good enough approximation.
+    Vec3 facing = {std::sin(c.yaw), 0.f, std::cos(c.yaw)};
+    // Project onto the tangent plane at this creature's position and renormalise.
+    facing = g_planet_surface.projectToTangent(c.pos, facing).normalised();
+
     auto nearby = queryRadius(c.pos, range);
     for (EntityID oid : nearby) {
         if (oid == c.id) continue;   // skip self
@@ -35,10 +43,10 @@ void World::perceive(Creature& c) {
         // FOV cone check: project the direction to the other creature onto the
         // facing vector. If the cosine is below cos(halfFOV), the target is outside
         // the cone and is treated as invisible.
-        Vec3 toO = o.pos - c.pos; toO.y = 0;
-        Vec3 facing = {std::sin(c.yaw), 0, std::cos(c.yaw)};
+        Vec3 toO = o.pos - c.pos;
         float d = toO.len();
         if (d > 0.1f) {
+            // FOV cone check in 3-D
             float cosA = toO.normalised().dot(facing);
             if (cosA < std::cos(fovRad * 0.5f)) continue;   // outside FOV cone
         }
@@ -76,7 +84,7 @@ void World::perceive(Creature& c) {
     // Water search: only run if no water has been cached within range yet
     if (c.nearestWaterDist > range) {
         Vec3 wp;
-        if (findWater(c.pos, range, wp)) {
+        if (g_planet_surface.findOcean(c.pos, range, wp)) {
             c.nearestWaterDist = dist(c.pos, wp);
             c.nearestWater     = wp;
         }

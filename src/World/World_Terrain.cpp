@@ -1,4 +1,5 @@
 #include "World.hpp"
+#include "World_Planet.hpp"
 #include <cmath>
 #include <algorithm>
 
@@ -19,79 +20,79 @@ VoxelColumn& World::columnAt(int gx, int gz) {
     return chunks[cz * worldCX + cx].cells[lz][lx];
 }
 
-// Bilinear interpolation of height at a continuous world-space point.
-// Sampling four integer-grid corners and blending avoids harsh "stair-step"
-// transitions when a creature moves between cells.
-float World::heightAt(float x, float z) const {
-    int x0 = (int)std::floor(x), z0 = (int)std::floor(z);
-    float fx = x - x0, fz = z - z0;   // fractional offsets in [0,1)
+// ── Planet-mode 3D spatial helpers ───────────────────────────────────────────
 
-    auto getH = [&](int gx, int gz) -> float {
-        gx = std::clamp(gx, 0, worldCX * CHUNK_SIZE - 1);
-        gz = std::clamp(gz, 0, worldCZ * CHUNK_SIZE - 1);
-        int cx = gx / CHUNK_SIZE, lx = gx % CHUNK_SIZE;
-        int cz = gz / CHUNK_SIZE, lz = gz % CHUNK_SIZE;
-        const Chunk* ch = chunkAt(cx, cz);
-        return ch ? ch->cells[lz][lx].height : 0.f;
-    };
-
-    float h00 = getH(x0,   z0  );
-    float h10 = getH(x0+1, z0  );
-    float h01 = getH(x0,   z0+1);
-    float h11 = getH(x0+1, z0+1);
-
-    // Standard bilinear blend: lerp along X, then lerp those results along Z
-    return (h00 * (1-fx) + h10 * fx) * (1-fz)
-         + (h01 * (1-fx) + h11 * fx) *    fz;
+float World::heightAt3D(const Vec3& worldPos) const {
+    return g_planet_surface.noiseHeight(worldPos);
 }
 
-// Estimate terrain slope at (x,z) as sin(angle_from_horizontal).
-// Uses a central finite difference on the height field.
-// sin(atan(gradMag)) ≈ gradMag for small angles; gives true sin for steep slopes.
-// Used by the energy model (climbing cost) and movement gating (max slope).
+Vec3 World::snapToSurface3D(const Vec3& worldPos) const {
+    return g_planet_surface.snapToSurface(worldPos);
+}
+
+Vec3 World::normalAt(const Vec3& worldPos) const {
+    return g_planet_surface.normalAt(worldPos);
+}
+
+float World::slopeAt3D(const Vec3& worldPos) const {
+    return g_planet_surface.slopeAt(worldPos);
+}
+
+bool World::isOcean(const Vec3& worldPos) const {
+    return g_planet_surface.isOcean(worldPos);
+}
+
+bool World::findOcean(const Vec3& from, float radius, Vec3& outPos) const {
+    return g_planet_surface.findOcean(from, radius, outPos);
+}
+
+// ── Legacy flat-world stubs ───────────────────────────────────────────────────
+// These are called by Renderer_Camera, Renderer_Overlays, SimUI, etc. that
+// haven't been ported to full 3D yet. They work by treating (x, z) as a
+// rough direction from the planet center — good enough for the FOV cone and
+// terrain hover which operate near the top of the sphere (y > 0 side).
+
+float World::heightAt(float x, float z) const {
+    // Build an approximate 3-D world position on the top hemisphere and query.
+    // Offset by planet center so the direction points away from center.
+    Vec3 approx = {
+        g_planet_surface.center.x + x,
+        g_planet_surface.center.y + g_planet_surface.radius,   // top of sphere
+        g_planet_surface.center.z + z,
+    };
+    // Snap to actual surface along this direction from center, return Y.
+    Vec3 snapped = g_planet_surface.snapToSurface(approx);
+    return snapped.y;
+}
+
 float World::slopeAt(float x, float z) const {
-    const float d = 0.5f;
-    float dhdx = (heightAt(x+d, z) - heightAt(x-d, z)) / (2*d);
-    float dhdz = (heightAt(x, z+d) - heightAt(x, z-d)) / (2*d);
-    float gradMag = std::sqrt(dhdx*dhdx + dhdz*dhdz);  // magnitude of gradient vector
-    return std::sin(std::atan(gradMag));                 // convert rise/run to sin(angle)
+    Vec3 approx = {
+        g_planet_surface.center.x + x,
+        g_planet_surface.center.y + g_planet_surface.radius,
+        g_planet_surface.center.z + z,
+    };
+    Vec3 snapped = g_planet_surface.snapToSurface(approx);
+    return g_planet_surface.slopeAt(snapped);
 }
 
 bool World::isWater(float x, float z) const {
-    int gx = (int)x, gz = (int)z;
-    gx = std::clamp(gx, 0, worldCX * CHUNK_SIZE - 1);
-    gz = std::clamp(gz, 0, worldCZ * CHUNK_SIZE - 1);
-    int cx = gx / CHUNK_SIZE, lx = gx % CHUNK_SIZE;
-    int cz2 = gz / CHUNK_SIZE, lz = gz % CHUNK_SIZE;
-    const Chunk* ch = chunkAt(cx, cz2);
-    return ch && ch->cells[lz][lx].material == 3;
+    Vec3 approx = {
+        g_planet_surface.center.x + x,
+        g_planet_surface.center.y + g_planet_surface.radius,
+        g_planet_surface.center.z + z,
+    };
+    return g_planet_surface.isOcean(g_planet_surface.snapToSurface(approx));
 }
 
-// Scan a grid of cells within `radius` of `from` to find the nearest water tile.
-// Returns false if no water is found within range.
-// Linear scan is acceptable because this is called once per creature per tick
-// and the search radius is typically small (< 50 tiles).
 bool World::findWater(const Vec3& from, float radius, Vec3& outPos) const {
-    int r = (int)std::ceil(radius);
-    int gx0 = (int)from.x - r, gz0 = (int)from.z - r;
-    float bestDist = 1e9f;
-    bool  found    = false;
-    for (int dz = -r; dz <= r; dz++) {
-        for (int dx = -r; dx <= r; dx++) {
-            int gx = gx0 + dx, gz = gz0 + dz;
-            if (gx < 0 || gz < 0) continue;
-            if (gx >= worldCX * CHUNK_SIZE || gz >= worldCZ * CHUNK_SIZE) continue;
-            if (!isWater((float)gx, (float)gz)) continue;
-            Vec3 wPos = snapToSurface((float)gx, (float)gz);
-            float d   = dist(from, wPos);
-            if (d < bestDist && d < radius) {
-                bestDist = d; outPos = wPos; found = true;
-            }
-        }
-    }
-    return found;
+    return g_planet_surface.findOcean(from, radius, outPos);
 }
 
 Vec3 World::snapToSurface(float x, float z) const {
-    return {x, heightAt(x, z), z};
+    Vec3 approx = {
+        g_planet_surface.center.x + x,
+        g_planet_surface.center.y + g_planet_surface.radius,
+        g_planet_surface.center.z + z,
+    };
+    return g_planet_surface.snapToSurface(approx);
 }

@@ -23,3 +23,16 @@ DataRecorder g_recorder;  // samples population statistics at 1 Hz for graphing
 Renderer     g_renderer;  // D3D11 draw calls, camera, chunk mesh cache
 PlanetRenderer g_planet;  //
 SimUI        g_ui;        // all ImGui panels; owns selectedID / showDemoWindow etc.
+
+// ── Camera start position ──────────────────────────────────────────────────────
+// Called once from RunApplication() after Renderer::init() so the camera starts
+// above the planet surface
+// Planet center = (0, -1800, 0), radius = 1000 → top surface ≈ y = -800.
+// We place the camera at y = -800 + 200 = -600, looking straight down.
+void SetupPlanetCamera(Renderer& rend) {
+    rend.camera.pos   = {0.f, -600.f, 0.f};
+    rend.camera.yaw   = 0.f;
+    rend.camera.pitch = -1.2f;   // steep downward angle to see the surface
+    rend.camera.fovY  = 60.f;
+    rend.camera.translation_speed = 200.f;  // faster movement to traverse the sphere
+}

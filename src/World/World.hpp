@@ -159,6 +159,8 @@ struct World {
     bool saveToFile(const char* path) const;
     bool loadFromFile(const char* path);
     void exportCSV(const char* path) const;
+    float slopeAt3D(const Vec3 &worldPos) const;
+    Vec3 normalAt(const Vec3 &worldPos) const;
 
 private:
     void  growPlants(float dt);
@@ -169,6 +171,11 @@ private:
     Chunk*       chunkAt(int cx, int cz);
     const Chunk* chunkAt(int cx, int cz) const;
     VoxelColumn& columnAt(int gx, int gz);
+
+    float heightAt3D(const Vec3 &worldPos) const;
+    Vec3 snapToSurface3D(const Vec3 &worldPos) const;
+    bool isOcean(const Vec3 &worldPos) const;
+    bool findOcean(const Vec3 &from, float radius, Vec3 &outPos) const;
 
     // Simple spatial hash for creature proximity queries
     void rebuildSpatialHash();

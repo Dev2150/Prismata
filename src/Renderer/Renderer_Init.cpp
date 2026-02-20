@@ -1,5 +1,5 @@
-#include "Renderer.h"
-#include "Renderer_Shaders.h"
+#include "Renderer.hpp"
+#include "Renderer_Shaders.hpp"
 #include <d3dcompiler.h>
 
 // ── Renderer_Init.cpp ─────────────────────────────────────────────────────────

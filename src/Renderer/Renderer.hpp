@@ -1,7 +1,7 @@
 #pragma once
 #include <d3d11.h>
-#include "../Math.h"
-#include "../World.h"
+#include "../Math.hpp"
+#include "../World.hpp"
 
 // ── Camera ────────────────────────────────────────────────────────────────────
 struct Camera {

@@ -7,14 +7,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # ── Sources ────────────────────────────────────────────────────────────────────
 set(SOURCES
     src/main.cpp
-        src/world.cpp
+        src/World.cpp
         src/Renderer/Renderer_Camera.cpp
         src/Renderer/Renderer_Creatures.cpp
         src/Renderer/Renderer_Frame.cpp
         src/Renderer/Renderer_Init.cpp
         src/Renderer/Renderer_Overlays.cpp
         src/Renderer/Renderer_Terrain.cpp
-        src/simUI.cpp
+        src/SimUI.cpp
 
     # ImGui – place the imgui/ folder at the project root
     imgui/imgui.cpp

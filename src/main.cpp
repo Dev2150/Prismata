@@ -22,11 +22,11 @@
 #include <algorithm>
 #include <cmath>
 
-#include "World.h"
-#include "Renderer/Renderer.h"
-#include "DataRecorder.h"
-#include "SimUI.h"
-#include "Math.h"
+#include "World.hpp"
+#include "Renderer/Renderer.hpp"
+#include "DataRecorder.hpp"
+#include "SimUI.hpp"
+#include "Math.hpp"
 
 // ── D3D11 globals ─────────────────────────────────────────────────────────────
 // Kept as file-scope statics so helper functions (CreateDeviceD3D, WndProc, etc.)

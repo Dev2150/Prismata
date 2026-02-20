@@ -1,4 +1,4 @@
-#include "SimUI.h"
+#include "SimUI.hpp"
 #include "imgui.h"
 #include "implot.h"
 #include <cstdio>

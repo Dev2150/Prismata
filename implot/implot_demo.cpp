@@ -30,7 +30,7 @@
 
 #include "implot.h"
 #ifndef IMGUI_DISABLE
-#include <Math.h>
+#include <Math.hpp>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>

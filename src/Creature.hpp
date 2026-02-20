@@ -1,7 +1,7 @@
 #pragma once
-#include "Genome.h"
-#include "Needs.h"
-#include "Math.h"
+#include "Genome.hpp"
+#include "Needs.hpp"
+#include "Math.hpp"
 #include <cstdint>
 #include <vector>
 

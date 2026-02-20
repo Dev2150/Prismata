@@ -1,8 +1,8 @@
 // SimUI.h
 #pragma once
-#include "World.h"
-#include "DataRecorder.h"
-#include "Renderer/Renderer.h"
+#include "World.hpp"
+#include "DataRecorder.hpp"
+#include "Renderer/Renderer.hpp"
 
 struct SimUI {
     // ── State ──────────────────────────────────────────────────────────────────

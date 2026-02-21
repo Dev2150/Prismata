@@ -31,9 +31,21 @@ void Renderer::tickCamera(float dt, const World& world) {
         // We capture whatever angle and distance the player was at so possession
         // feels like "grabbing onto" the creature rather than snapping to a preset.
         if (!hasPossessOffset) {
-            possessOffset.x = camera.pos.x - creature.pos.x;
-            possessOffset.y = camera.pos.y - creature.pos.y;
-            possessOffset.z = camera.pos.z - creature.pos.z;
+            Vec3 creatureNormal = g_planet_surface.normalAt(creature.pos);
+            Vec3 forward = {std::sin(creature.yaw), 0.f, std::cos(creature.yaw)};
+            forward = g_planet_surface.projectToTangent(creature.pos, forward).normalised();
+
+            // A little bit above and slightly behind
+            Vec3 idealOffset = creatureNormal * 100.0f - forward * 0.0f;
+            possessOffset.x = idealOffset.x;
+            possessOffset.y = idealOffset.y;
+            possessOffset.z = idealOffset.z;
+
+            // Point camera at the creature
+            Vec3 camPos = creature.pos + idealOffset;
+            Vec3 toCreature = (creature.pos - camPos).normalised();
+            camera.fwd = {toCreature.x, toCreature.y, toCreature.z};
+
             hasPossessOffset = true;
         }
 

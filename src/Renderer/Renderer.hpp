@@ -131,6 +131,7 @@ struct Renderer {
     EntityID selectedID   = INVALID_ID;  // creature whose FOV cone to draw
     bool     showFOVCone  = true;        // toggle FOV cone overlay
     bool     lockYawFollow= false;       // when true, following a creature won't rotate the camera
+    bool     hideOutsideFOV = false;     // hide entities outside possessed creature's FOV
 
     // ── Creature possession: translation-only follow ───────────────────────────
     // When a creature is possessed we record the camera→creature offset at the

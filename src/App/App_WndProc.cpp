@@ -145,25 +145,30 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
             // ── WM_CHAR: single-press actions ─────────────────────────────────────────
         case WM_CHAR:
-            // ── P: toggle possession of a creature ──────────────────────────────
-            // If not possessing: possess selected creature (or random if none selected)
-            // If possessing: release back to free cam
-            if ((wParam == 'p' || wParam == 'P') && !ImGui::GetIO().WantCaptureKeyboard) {
+            if (ImGui::GetIO().WantCaptureKeyboard) return 0;
+
+            // ── P: possess a random creature ────────────────────────────────────
+            if (wParam == 'p' || wParam == 'P') {
+                EntityID toPos = g_world.findRandomLivingCreature();
+                if (toPos != INVALID_ID) {
+                    g_renderer.playerID = toPos;
+                    g_ui.selectedID     = toPos;
+                }
+            }
+            // ── T: toggle possession of selected creature ───────────────────────
+            else if (wParam == 't' || wParam == 'T') {
                 if (g_renderer.playerID != INVALID_ID) {
                     // Release possession
                     g_renderer.playerID      = INVALID_ID;
                     g_renderer.hasPossessOffset = false;
                     g_renderer.showFogOfWar  = false;
-                } else {
-                    // Possess: prefer selected creature, fall back to random
-                    EntityID toPos = g_ui.selectedID;
-                    if (toPos == INVALID_ID)
-                        toPos = g_world.findRandomLivingCreature();
-                    if (toPos != INVALID_ID) {
-                        g_renderer.playerID = toPos;
-                        g_ui.selectedID     = toPos;
+                } else if (g_ui.selectedID != INVALID_ID) {
+                    g_renderer.playerID = g_ui.selectedID;
                     }
                 }
+            // ── J: toggle hiding objects outside FOV ────────────────────────────
+            else if (wParam == 'j' || wParam == 'J') {
+                g_renderer.hideOutsideFOV = !g_renderer.hideOutsideFOV;
             }
             return 0;
 

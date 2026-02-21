@@ -63,6 +63,24 @@ void Renderer::renderPlants(const World& world) {
         // Cull plants on the far side of the planet
         if (!plantVisibleFromCamera(p.pos, camera.pos)) continue;
 
+        // Cull plants outside the possessed creature's FOV
+        if (hideOutsideFOV && playerID != INVALID_ID) {
+            auto it = world.idToIndex.find(playerID);
+            if (it != world.idToIndex.end()) {
+                const Creature& pc = world.creatures[it->second];
+                float dist = (p.pos - pc.pos).len();
+                if (dist > pc.genome.visionRange())
+                    continue;
+                Vec3 toP = (p.pos - pc.pos).normalised();
+                Vec3 facing = {std::sin(pc.yaw), 0.f, std::cos(pc.yaw)};
+                facing = g_planet_surface.projectToTangent(pc.pos, facing).normalised();
+                float fovRad = pc.genome.visionFOV() * 3.14159265f / 180.f;
+                if (toP.dot(facing) < std::cos(fovRad * 0.5f)) {
+                    continue;
+                }
+            }
+        }
+
         uint8_t t = std::min((uint8_t)2, p.type);
         float sz  = PLANT_SIZES[t];
 

@@ -3,7 +3,27 @@
 #include "World/World.hpp"
 #include "Sim/DataRecorder.hpp"
 #include "Renderer/Renderer.hpp"
+#include <string>
+#include <vector>
 
+// ── Notification severity ─────────────────────────────────────────────────────
+enum class NotifSeverity {
+    Info,       // blue  – general events
+    Warning,    // amber – concerning but not critical
+    Critical,   // red   – population collapse, extinction, etc.
+};
+
+// ── Notification card ─────────────────────────────────────────────────────────
+struct Notification {
+    std::string   title;
+    std::string   message;
+    NotifSeverity severity  = NotifSeverity::Info;
+    float         gameTime  = 0.f;   // in-game time when event occurred
+    float         age       = 0.f;   // real seconds since pushed (for auto-dismiss)
+    bool          dismissed = false;
+};
+
+// ── SimUI ─────────────────────────────────────────────────────────────────────
 struct SimUI {
     // ── State ──────────────────────────────────────────────────────────────────
     EntityID   selectedID      = INVALID_ID;
@@ -32,6 +52,23 @@ struct SimUI {
     // Window dimensions passed in from main.cpp each frame
     int  windowW = 1280, windowH = 800;
 
+    // ── Notifications ─────────────────────────────────────────────────────────
+    // Newest first; the draw function renders them top-to-bottom in this order.
+    std::vector<Notification> notifications;
+
+    // State flags for built-in triggers
+    bool lowPopNotifFired = false;
+
+    // Push a new notification card onto the stack.
+    // title     – short headline shown in the accent colour
+    // message   – body text (word-wrapped inside the card)
+    // severity  – controls colour and icon
+    // gameTime  – world.simTime at the moment of the event
+    void pushNotification(const std::string& title,
+                          const std::string& message,
+                          NotifSeverity       severity = NotifSeverity::Info,
+                          float               gameTime = 0.f);
+
     // ── Entry point ───────────────────────────────────────────────────────────
     void draw(World& world, DataRecorder& rec, Renderer& rend);
 
@@ -52,4 +89,8 @@ private:
 
     // Update terrain hover data using the renderer's ray cast
     void updateTerrainHover(const Renderer& rend, const World& world);
+
+    // Notification internals
+    void tickNotifications(float dt, const World& world);
+    void drawNotifications();
 };

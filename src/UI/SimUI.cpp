@@ -42,6 +42,11 @@ static const char* timeIcon(float timeOfDay) {
 void SimUI::draw(World& world, DataRecorder& rec, Renderer& rend) {
     updateTerrainHover(rend, world);
 
+    // Advance notification timers and fire built-in triggers
+    // Use real dt; for simplicity derive it from ImGui's delta time.
+    float realDt = ImGui::GetIO().DeltaTime;
+    tickNotifications(realDt, world);
+
     drawMainMenuBar(world, rec, rend);
     drawSimControls(world, rend);
     drawPopStats(world, rec);
@@ -54,6 +59,9 @@ void SimUI::draw(World& world, DataRecorder& rec, Renderer& rend) {
     if (showSettings) drawSettingsWindow(world, rend);
 
     drawTerrainHoverTooltip();
+
+    // Notification overlay drawn last so it sits on top of everything
+    drawNotifications();
 
     if (showDemoWindow) {
         ImGui::ShowDemoWindow(&showDemoWindow);

@@ -113,7 +113,7 @@ struct Renderer {
     ID3D11DepthStencilState* dssDepth           = nullptr;
     ID3D11DepthStencilState* dssNoDepthWrite    = nullptr;  // depth test ON, write OFF (water)
     ID3D11BlendState*        bsAlpha            = nullptr;
-    size_t MAX_CREATURES = 4096;
+    int MAX_CREATURES = 4096;
 
     // ── Depth buffer ──────────────────────────────────────────────────────────
     ID3D11Texture2D*        depthTex = nullptr;

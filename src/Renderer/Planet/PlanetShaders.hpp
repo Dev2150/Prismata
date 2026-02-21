@@ -63,9 +63,7 @@ VOut VSMain(VIn v) {
     return o;
 }
 
-// ── Biome colour from height ──────────────────────────────────────────────────
-// Maps normalised height [0,1] to a surface colour.
-// Uses smooth transitions so biome boundaries aren't hard edges.
+// ── Biome colour from normalised height ────────────────────────────────────────
 float3 biomeColor(float h) {
     // Colour keyframes: [height, r, g, b]
     float3 deepOcean   = float3(0.02f, 0.07f, 0.25f);
@@ -99,30 +97,38 @@ float3 biomeColor(float h) {
 // ── Pixel shader ──────────────────────────────────────────────────────────────
 float4 PSMain(VOut v) : SV_TARGET {
     float3 N   = normalize(v.nrm);
-    float3 L   = normalize(-lightDir.xyz);   // direction FROM surface TOWARD sun
+
+    // Sun direction: lightDir points FROM the sun TOWARD the scene.
+    // Negate it to get the direction FROM the surface TOWARD the sun.
+    float3 L = normalize(-lightDir.xyz);
+
+    // --- KEY CHANGE: per-fragment N·L ---
+    // Each surface point independently determines whether it faces the sun.
+    // This creates a proper day/night terminator on the sphere.
     float  NdL = saturate(dot(N, L));
 
     // Biome base colour
     float3 baseCol = biomeColor(v.height);
 
-    // Lambertian + ambient lighting (same as world terrain)
-    float3 lit = baseCol * (ambientColor.rgb + sunColor.rgb * NdL);
+    // Night-side glow: a tiny amount of ambient so the dark side isn't pitch black.
+    // ambientColor.rgb provides the sky/space ambient (already dark at night).
+    float3 nightAmbient = float3(0.02f, 0.025f, 0.04f);  // very faint blue-black
+    float3 ambient = ambientColor.rgb + nightAmbient;
 
-    // ── Atmosphere haze ───────────────────────────────────────────────────────
-    // Exponential depth fog in the atmosphere colour.
-    // At large distances (space view) the planet surface blends into the
-    // atmospheric limb colour. atmosphereColor.w = effective thickness in world units.
+    // Direct sunlight contribution — zero on the dark hemisphere automatically
+    float3 lit = baseCol * (ambient + sunColor.rgb * NdL);
+
+    // ── Atmosphere depth haze ─────────────────────────────────────────────────
     float atmThick = atmosphereColor.w;
     if (atmThick > 1.f) {
         float fogFactor = 1.f - exp(-v.camDist / atmThick);
-        lit = lerp(lit, atmosphereColor.rgb * (ambientColor.rgb + sunColor.rgb * 0.4f),
-                   fogFactor * 0.55f);
+        // Haze colour is tinted by sunlight on the lit side, dark on the shadow side
+        float3 hazeCol = atmosphereColor.rgb * (ambient + sunColor.rgb * 0.4f * NdL);
+        lit = lerp(lit, hazeCol, fogFactor * 0.55f);
     }
 
-    // ── Specular (ocean only) ─────────────────────────────────────────────────
-    // Add a simple Blinn-Phong specular highlight on ocean tiles so they
-    // glitter in the sunlight.
-    if (v.height < 0.25f) {
+    // ── Specular highlight on ocean (sun-side only) ────────────────────────────
+    if (v.height < 0.25f && NdL > 0.f) {
         float3 V   = normalize(camPos.xyz - v.wpos);
         float3 H   = normalize(L + V);
         float  spec= pow(saturate(dot(N, H)), 64.f);
@@ -143,9 +149,9 @@ float4 PSMain(VOut v) : SV_TARGET {
 )HLSL";
 
 // ── PLANET_ATMO_HLSL ──────────────────────────────────────────────────────────
-// Optional atmosphere shell: a slightly larger sphere rendered with additive
-// blending to produce a glowing limb effect when viewing from space.
-// Drawn AFTER the planet surface, blended additively.
+// Atmosphere shell: a slightly larger transparent sphere with limb brightening.
+// Also uses the per-fragment N·L so the atmosphere glows on the sunlit side
+// and fades to near-black on the shadow side.
 
 static const char* PLANET_ATMO_HLSL = R"HLSL(
 
@@ -188,9 +194,12 @@ float4 PSAtmo(VOut v) : SV_TARGET {
 
     // Sun side brightens (scattering): lit side has blue scatter, dark side fades
     float3 L   = normalize(-lightDir.xyz);
-    float  NdL = saturate(dot(v.nrm, L)) * 0.6f + 0.2f;
+    float  NdL = saturate(dot(v.nrm, L));
 
-    float3 atmoCol = atmosphereColor.rgb * NdL;
+    // Lit side: blue scatter. Shadow side: nearly black with just a hint of scatter.
+    float litFactor = NdL * 0.7f + 0.05f;   // small ambient floor so it's not pure black
+    float3 atmoCol  = atmosphereColor.rgb * litFactor;
+
     float  alpha   = fresnel * 0.55f;
 
     return float4(atmoCol, alpha);

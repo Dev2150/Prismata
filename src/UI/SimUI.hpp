@@ -6,11 +6,10 @@
 #include <string>
 #include <vector>
 
-// ── Notification severity ─────────────────────────────────────────────────────
 enum class NotifSeverity {
-    Info,       // blue  – general events
-    Warning,    // amber – concerning but not critical
-    Critical,   // red   – population collapse, extinction, etc.
+    Info,
+    Warning,
+    Critical,
 };
 
 // ── Notification card ─────────────────────────────────────────────────────────
@@ -51,6 +50,10 @@ struct SimUI {
 
     // Window dimensions passed in from main.cpp each frame
     int  windowW = 1280, windowH = 800;
+
+    // ── Performance metrics (set by App.cpp each frame) ───────────────────────
+    float displayFPS = 0.f;   // frames per second (rendering)
+    float displayUPS = 0.f;   // simulation updates per second
 
     // ── Notifications ─────────────────────────────────────────────────────────
     // Newest first; the draw function renders them top-to-bottom in this order.

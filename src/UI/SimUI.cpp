@@ -172,6 +172,41 @@ void SimUI::drawMainMenuBar(World& world, DataRecorder& rec, Renderer& rend) {
     // ── Sim speed indicator ───────────────────────────────────────────────────
     ImGui::TextColored({0.6f,1.f,0.6f,1.f}, "  |  ×%.1f  (-/+)", world.cfg.simSpeed);
 
+    // ── FPS / UPS display ─────────────────────────────────────────────────────
+    // FPS = render frames per second  (how fast the GPU is presenting)
+    // UPS = simulation updates per second (world.tick calls per second,
+    //       weighted by simSpeed so it reflects actual sim throughput)
+    //
+    // Colour coding:
+    //   >= 60 FPS → green    (smooth)
+    //   >= 30 FPS → yellow   (acceptable)
+    //    < 30 FPS → red      (slow)
+    {
+        ImVec4 fpsCol;
+        if      (displayFPS >= 60.f) fpsCol = {0.3f, 1.0f, 0.3f, 1.f};
+        else if (displayFPS >= 30.f) fpsCol = {1.0f, 0.9f, 0.2f, 1.f};
+        else                         fpsCol = {1.0f, 0.3f, 0.2f, 1.f};
+
+        ImGui::TextColored(fpsCol, "  |  FPS: %4.0f", displayFPS);
+        ImGui::SameLine(0.f, 0.f);
+
+        // UPS: simulation ticks per second (real clock, not sim time)
+        ImVec4 upsCol = {0.6f, 0.85f, 1.0f, 1.f};  // always light blue
+        ImGui::TextColored(upsCol, "  UPS: %4.0f", displayUPS);
+    }
+
+    // ── Controls hint (right-aligned) ─────────────────────────────────────────
+    // Show a quick hotkey reminder at the far right of the menu bar.
+    {
+        const char* hint = "WASD=move  Q/E=turn  F/R=alt  Wheel=zoom  RMB=look  P=possess";
+        float hintW = ImGui::CalcTextSize(hint).x;
+        float avail = ImGui::GetContentRegionAvail().x;
+        if (avail > hintW + 8.f) {
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + avail - hintW - 4.f);
+            ImGui::TextDisabled("%s", hint);
+        }
+    }
+
     ImGui::EndMainMenuBar();
 }
 

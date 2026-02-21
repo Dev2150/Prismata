@@ -7,6 +7,16 @@
 #include <cmath>
 #include "App/App_Globals.hpp"
 
+// FPS tracking: count rendered frames over a 0.5-second window
+int   fpsFrameCount  = 0;
+float fpsAccum       = 0.f;
+float displayFPS     = 0.f;
+
+// UPS tracking: count world.tick() calls (weighted by simSpeed) per second
+int   upsTickCount   = 0;
+float upsAccum       = 0.f;
+float displayUPS     = 0.f;
+
 int RunApplication()
 {
     // Make the process DPI-aware so the window and fonts render sharply on
@@ -178,25 +188,49 @@ int RunApplication()
             g_renderer.resize(rc.right - rc.left, rc.bottom - rc.top);
         }
 
-        // ── Compute delta time ─────────────────────────────────────────────
+        // ── Compute delta time ──────────────────────────────────────────────
         auto now = Clock::now();
         float dt = std::chrono::duration<float>(now - lastTime).count();
         lastTime = now;
-        dt = std::min(dt, 0.05f);  // cap at 50 ms to prevent huge simulation steps
+        dt = std::min(dt, 0.05f);
 
-        // ── Update simulation and recording ────────────────────────────────
+        // ── FPS counter ─────────────────────────────────────────────────────
+        {
+            static int   fpsFrameCount = 0;
+            static float fpsAccum      = 0.f;
+            fpsFrameCount++;
+            fpsAccum += dt;
+            if (fpsAccum >= 0.5f) {
+                g_ui.displayFPS = (float)fpsFrameCount / fpsAccum;
+                fpsFrameCount   = 0;
+                fpsAccum        = 0.f;
+            }
+        }
 
-        // Sync selectedID so renderer can draw FOV cone
+        // ── Update simulation and recording ─────────────────────────────────
         g_renderer.selectedID = g_ui.selectedID;
-
-        // tickCamera must run before render so the view matrix is fresh.
         g_renderer.tickCamera(dt, g_world);
-        // update quadtree LOD
         g_planet.update(g_renderer.camera);
-        // World::tick() advances all creatures, plants, and reproduction
         g_world.tick(dt);
-        // DataRecorder::tick() may or may not fire depending on its 1-Hz timer.
         g_recorder.tick(dt, g_world);
+
+        // ── UPS counter ─────────────────────────────────────────────────────
+        // Measures real world.tick() calls per wall-clock second.
+        // The simulation is called once per rendered frame, so UPS = FPS when
+        // not paused. Showing both lets you see if rendering is the bottleneck.
+        {
+            static int   upsTickCount = 0;
+            static float upsAccum     = 0.f;
+            if (!g_world.cfg.paused) {
+                upsTickCount++;
+                upsAccum += dt;
+            }
+            if (upsAccum >= 0.5f) {
+                g_ui.displayUPS = (float)upsTickCount / upsAccum;
+                upsTickCount    = 0;
+                upsAccum        = 0.f;
+            }
+        }
 
         // ── Sky clear colour (space black near camera, atmospheric at edges) ──
         {
@@ -308,4 +342,3 @@ int RunApplication()
     ::UnregisterClassW(wc.lpszClassName, wc.hInstance);
     return 0;
 }
-

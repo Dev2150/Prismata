@@ -396,6 +396,52 @@ void SimUI::drawPopStats(const World& world, const DataRecorder& rec) {
     ImGui::End();
 }
 
+ImVec4 SimUI::get_color_from_term(const char *term) {
+    ImVec4 color;
+    if (strcmp(term, "Lowest") == 0)
+        color = ImVec4(1.0f, 0.0f, 0.0f, 1.0f); // Red
+    else if (strcmp(term, "Vestigial") == 0)
+        color = ImVec4(1.0f, 0.25f, 0.25f, 1.0f); //
+    else if (strcmp(term, "Minimal") == 0)
+        color = ImVec4(1.0f, 0.50f, 0.50f, 1.0f); //
+    else if (strcmp(term, "Reduced") == 0)
+        color = ImVec4(1.0f, 0.75f, 0.75f, 1.0f); //
+    else if (strcmp(term, "Average") == 0)
+        color = ImVec4(1.0f, 1.0f, 1.0f, 1.0f); // White
+    else if (strcmp(term, "Elevated") == 0)
+        color = ImVec4(0.75f, 1.0f, 0.75f, 1.0f); //
+    else if (strcmp(term, "Significant") == 0)
+        color = ImVec4(0.5f, 1.0f, 0.5f, 1.0f); //
+    else if (strcmp(term, "Extreme") == 0)
+        color = ImVec4(0.25f, 1.0f, 0.25f, 1.0f); //
+    else if (strcmp(term, "Highest") == 0)
+        color = ImVec4(0.0f, 1.0f, 0.0f, 1.0f); // Green
+    else // Error
+        throw std::invalid_argument("Undefined term");
+    return color;
+}
+
+const char * SimUI::get_term_from_term(int total, int count_lower, int count_greater) {
+    const char* term = "";
+    if (total <= 1 || (count_lower == 0 && count_greater == 0)) {
+        term = "Average";
+    } else if (count_lower == 0) {
+        term = "Lowest";
+    } else if (count_greater == 0) {
+        term = "Highest";
+    } else {
+        float pct = (float)count_lower / (total - 1);
+        if (pct < 0.05f) term = "Vestigial";
+        else if (pct < 0.25f) term = "Minimal";
+        else if (pct < 0.40f) term = "Reduced";
+        else if (pct < 0.60f) term = "Average";
+        else if (pct < 0.75f) term = "Elevated";
+        else if (pct < 0.95f) term = "Significant";
+        else term = "Extreme";
+    }
+    return term;
+}
+
 // ── Entity inspector ──────────────────────────────────────────────────────────
 void SimUI::drawEntityInspector(const World& world) {
     ImGui::Begin("Entity Inspector");
@@ -520,46 +566,8 @@ void SimUI::drawEntityInspector(const World& world) {
                     else if (other.genome.raw[i] > my_val) count_greater++;
                 }
 
-                const char* term = "";
-                if (total <= 1 || (count_lower == 0 && count_greater == 0)) {
-                    term = "Average";
-                } else if (count_lower == 0) {
-                    term = "Lowest";
-                } else if (count_greater == 0) {
-                    term = "Highest";
-                } else {
-                    float pct = (float)count_lower / (total - 1);
-                    if (pct < 0.05f) term = "Vestigial";
-                    else if (pct < 0.25f) term = "Minimal";
-                    else if (pct < 0.40f) term = "Reduced";
-                    else if (pct < 0.60f) term = "Average";
-                    else if (pct < 0.75f) term = "Elevated";
-                    else if (pct < 0.95f) term = "Significant";
-                    else term = "Extreme";
-                }
-
-                ImVec4 color;
-                if (strcmp(term, "Lowest") == 0)
-                    color = ImVec4(1.0f, 0.0f, 0.0f, 1.0f); // Red
-                else if (strcmp(term, "Vestigial") == 0)
-                    color = ImVec4(1.0f, 0.25f, 0.25f, 1.0f); //
-                else if (strcmp(term, "Minimal") == 0)
-                    color = ImVec4(1.0f, 0.50f, 0.50f, 1.0f); //
-                else if (strcmp(term, "Reduced") == 0)
-                    color = ImVec4(1.0f, 0.75f, 0.75f, 1.0f); //
-                else if (strcmp(term, "Average") == 0)
-                    color = ImVec4(1.0f, 1.0f, 1.0f, 1.0f); // White
-                else if (strcmp(term, "Elevated") == 0)
-                    color = ImVec4(0.75f, 1.0f, 0.75f, 1.0f); //
-                else if (strcmp(term, "Significant") == 0)
-                    color = ImVec4(0.5f, 1.0f, 0.5f, 1.0f); //
-                else if (strcmp(term, "Extreme") == 0)
-                    color = ImVec4(0.25f, 1.0f, 0.25f, 1.0f); //
-                else if (strcmp(term, "Highest") == 0)
-                    color = ImVec4(0.0f, 1.0f, 0.0f, 1.0f); // Green
-                else // Error
-                    throw std::invalid_argument("Undefined term");
-
+                const char *term = get_term_from_term(total, count_lower, count_greater);
+                ImVec4 color = get_color_from_term(term);
 
                 ImGui::ProgressBar(c.genome.raw[i], ImVec2(120, 12), "");
                 ImGui::SameLine();

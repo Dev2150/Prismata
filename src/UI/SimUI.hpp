@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "imgui.hpp"
+
 enum class NotifSeverity {
     Info,
     Warning,
@@ -85,6 +87,11 @@ private:
     void drawMainMenuBar(World& world, DataRecorder& rec, Renderer& rend);
     void drawSimControls(World& world, Renderer& rend);
     void drawPopStats(const World& world, const DataRecorder& rec);
+
+    ImVec4 get_color_from_term(const char *term);
+
+    const char *get_term_from_term(int total, int count_lower, int count_greater);
+
     void drawEntityInspector(const World& world);
     void drawSpeciesPanel(const World& world);
     void drawGeneCharts(const World& world, const DataRecorder& rec);

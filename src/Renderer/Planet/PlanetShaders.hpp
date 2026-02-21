@@ -34,6 +34,7 @@ cbuffer PlanetConstants : register(b1) {
     float4 planetCenter;   // xyz = world-space planet centre, w = radius
     float4 atmosphereColor;// rgb = atmosphere tint, w = atmosphere thickness (world units)
     float4 planetParams;   // x = seaLevel (world Y), y = snowLine fraction, zw = unused
+    float4 sunInfo;         // xyz = unit vector scene→sun, w = elevation [-1..1]
 };
 
 struct VIn {
@@ -74,16 +75,11 @@ float3 biomeColor(float h) {
     float3 rock        = float3(0.45f, 0.42f, 0.40f);
     float3 snow        = float3(0.90f, 0.92f, 0.95f);
 
-    // Sea level sits at h ≈ 0.23 (sea floor fraction 0.3, normalised)
-    const float seaH    = 0.23f;
-    const float beachH  = 0.26f;
-    const float lowH    = 0.32f;
-    const float highH   = 0.56f;
-    const float rockH   = 0.75f;
-    const float snowH   = 0.85f;
+    const float seaH   = 0.23f, beachH = 0.26f, lowH  = 0.32f;
+    const float highH  = 0.56f, rockH  = 0.75f, snowH = 0.85f;
 
     float3 col;
-    if      (h < seaH)   col = lerp(deepOcean,  shallowSea, saturate((h)              / seaH));
+    if      (h < seaH)   col = lerp(deepOcean,  shallowSea, saturate(h / seaH));
     else if (h < beachH) col = lerp(shallowSea, beach,      saturate((h - seaH)       / (beachH - seaH)));
     else if (h < lowH)   col = lerp(beach,      lowland,    saturate((h - beachH)     / (lowH - beachH)));
     else if (h < highH)  col = lerp(lowland,    highland,   saturate((h - lowH)       / (highH - lowH)));
@@ -168,6 +164,7 @@ cbuffer PlanetConstants : register(b1) {
     float4 planetCenter;
     float4 atmosphereColor;
     float4 planetParams;
+    float4 sunInfo;
 };
 
 struct VIn  { float3 pos : POSITION; };
@@ -204,5 +201,89 @@ float4 PSAtmo(VOut v) : SV_TARGET {
 
     return float4(atmoCol, alpha);
 }
+)HLSL";
 
+// ── SUN_HLSL ──────────────────────────────────────────────────────────────────
+// Draws the sun as a camera-facing billboard placed far in the sky.
+// Uses additive blending so the glow composites naturally over space black.
+//
+// Input layout: float2 quadPos  (corner offsets in [-0.5, 0.5])
+// sunInfo.xyz = unit vector from scene TOWARD the sun  (= -lightDir, normalised)
+// sunInfo.w   = sun elevation in [-1, 1]; negative = below horizon
+static const char* SUN_HLSL = R"HLSL(
+
+cbuffer FrameConstants : register(b0) {
+    float4x4 viewProj;
+    float4   camPos;
+    float4   lightDir;
+    float4   fowData;
+    float4   sunColor;
+    float4   ambientColor;
+};
+cbuffer PlanetConstants : register(b1) {
+    float4 planetCenter;
+    float4 atmosphereColor;
+    float4 planetParams;
+    float4 sunInfo;   // xyz = scene→sun direction, w = elevation [-1,1]
+};
+
+struct SVIn  { float2 quadPos : POSITION; };
+struct SVOut {
+    float4 sv        : SV_POSITION;
+    float2 uv        : TEXCOORD0;   // -1..1 within the billboard
+    float  elevation : TEXCOORD1;
+};
+
+SVOut SunVS(SVIn v) {
+    // Place the sun very far away in the direction toward it
+    static const float SUN_DIST = 5000.0f;
+    static const float SUN_SIZE = 1600.0f;   // world-unit radius of the billboard
+
+    float3 sunDir    = normalize(sunInfo.xyz);           // scene→sun
+    float3 sunCenter = camPos.xyz + sunDir * SUN_DIST;
+
+    // Camera-facing billboard frame
+    // "up" is world Y unless we're looking nearly straight up/down
+    float3 worldUp = (abs(sunDir.y) < 0.95f)
+                   ? float3(0, 1, 0)
+                   : float3(1, 0, 0);
+    float3 right = normalize(cross(worldUp, sunDir));
+    float3 up    = cross(sunDir, right);
+
+    float3 wpos = sunCenter
+                + right * v.quadPos.x * SUN_SIZE
+                + up    * v.quadPos.y * SUN_SIZE;
+
+    SVOut o;
+    o.sv        = mul(float4(wpos, 1.0f), viewProj);
+    o.uv        = v.quadPos * 2.0f;   // remap [-0.5,0.5] → [-1,1]
+    o.elevation = sunInfo.w;
+    return o;
+}
+
+float4 SunPS(SVOut v) : SV_TARGET {
+    float d = length(v.uv);
+    if (d > 1.0f) discard;   // circular billboard
+
+    // Fade completely when below the horizon
+    float aboveHorizon = saturate(v.elevation * 3.0f + 0.3f);
+    if (aboveHorizon < 0.001f) discard;
+
+    // Hard bright disc in the centre
+    float core = 1.0f - smoothstep(0.0f, 0.12f, d);
+    // Soft corona falloff
+    float corona = pow(1.0f - d, 4.0f);
+    // Wide outer glow
+    float glow   = pow(1.0f - d, 2.0f) * 0.4f;
+
+    // Colour: white-hot core, warm orange halo
+    float3 coreCol   = float3(1.0f, 0.98f, 0.88f);
+    float3 coronaCol = lerp(float3(1.0f, 0.65f, 0.15f),
+                            float3(1.0f, 0.90f, 0.60f), core);
+
+    float3 col   = coreCol * core + coronaCol * (corona + glow);
+    float  alpha = (core + corona * 0.8f + glow) * aboveHorizon;
+
+    return float4(col, saturate(alpha));
+}
 )HLSL";

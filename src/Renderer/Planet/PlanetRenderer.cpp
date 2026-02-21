@@ -45,6 +45,7 @@ bool PlanetRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* c,
     if (!compileShaders())     return false;
     if (!createBuffers())      return false;
     if (!createAtmosphere())   return false;
+    if (!createSunQuad())      return false;
     if (!createRenderStates()) return false;
     return true;
 }
@@ -83,6 +84,19 @@ bool PlanetRenderer::compileShaders() {
     device->CreatePixelShader (aps->GetBufferPointer(), aps->GetBufferSize(), nullptr, &atmoPS);
     avs->Release(); aps->Release();
 
+    // ── Sun billboard ─────────────────────────────────────────────────────────
+    ID3DBlob* svs = compileShader(SUN_HLSL, "SunVS", "vs_5_0");
+    ID3DBlob* sps = compileShader(SUN_HLSL, "SunPS", "ps_5_0");
+    if (!svs || !sps) { if(svs) svs->Release(); if(sps) sps->Release(); return false; }
+    device->CreateVertexShader(svs->GetBufferPointer(), svs->GetBufferSize(), nullptr, &sunVS);
+    device->CreatePixelShader (sps->GetBufferPointer(), sps->GetBufferSize(), nullptr, &sunPS);
+
+    D3D11_INPUT_ELEMENT_DESC sunLD[] = {
+        {"POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+    };
+    device->CreateInputLayout(sunLD, 1, svs->GetBufferPointer(), svs->GetBufferSize(), &sunLayout);
+    svs->Release(); sps->Release();
+
     return true;
 }
 
@@ -110,7 +124,7 @@ bool PlanetRenderer::createBuffers() {
 // gives a convincing glowing limb effect when viewed from space.
 bool PlanetRenderer::createAtmosphere() {
     const int stacks = 32, slices = 48;
-    float r = cfg.radius * 1.025f;   // 2.5% larger than planet surface
+    float radius_atmosphere = cfg.radius * 1.1f;
 
     std::vector<float> verts;
     verts.reserve(stacks * slices * 3);
@@ -122,9 +136,9 @@ bool PlanetRenderer::createAtmosphere() {
             float x = std::sin(phi) * std::cos(theta);
             float y = std::cos(phi);
             float z = std::sin(phi) * std::sin(theta);
-            verts.push_back(cfg.center.x + x * r);
-            verts.push_back(cfg.center.y + y * r);
-            verts.push_back(cfg.center.z + z * r);
+            verts.push_back(cfg.center.x + x * radius_atmosphere);
+            verts.push_back(cfg.center.y + y * radius_atmosphere);
+            verts.push_back(cfg.center.z + z * radius_atmosphere);
         }
     }
 
@@ -157,6 +171,18 @@ bool PlanetRenderer::createAtmosphere() {
     return true;
 }
 
+// ── createSunQuad ─────────────────────────────────────────────────────────────
+// Simple 4-corner quad: TL, TR, BL, BR  (TRIANGLE_STRIP winding)
+bool PlanetRenderer::createSunQuad() {
+    float quad[] = { -0.5f, 0.5f,   0.5f, 0.5f,   -0.5f, -0.5f,   0.5f, -0.5f };
+    D3D11_BUFFER_DESC bd{};
+    bd.ByteWidth      = sizeof(quad);
+    bd.Usage          = D3D11_USAGE_IMMUTABLE;
+    bd.BindFlags      = D3D11_BIND_VERTEX_BUFFER;
+    D3D11_SUBRESOURCE_DATA sd{ quad };
+    return SUCCEEDED(device->CreateBuffer(&bd, &sd, &sunQuadVB));
+}
+
 // ── createRenderStates ────────────────────────────────────────────────────────
 bool PlanetRenderer::createRenderStates() {
     D3D11_RASTERIZER_DESC rd{};
@@ -177,6 +203,11 @@ bool PlanetRenderer::createRenderStates() {
     dsd.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
     device->CreateDepthStencilState(&dsd, &dssNoWrite);
 
+    // Sun: skip depth test entirely so it always appears in the sky
+    dsd.DepthEnable    = FALSE;
+    dsd.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+    device->CreateDepthStencilState(&dsd, &dssNoDepth);
+
     // Standard alpha blend for atmosphere
     D3D11_BLEND_DESC bd{};
     auto& rt = bd.RenderTarget[0];
@@ -189,6 +220,11 @@ bool PlanetRenderer::createRenderStates() {
     rt.BlendOpAlpha   = D3D11_BLEND_OP_ADD;
     rt.RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
     device->CreateBlendState(&bd, &bsAlpha);
+
+    // Additive blend: src + dst  (great for glowing sun disc)
+    rt.SrcBlend  = D3D11_BLEND_SRC_ALPHA;
+    rt.DestBlend = D3D11_BLEND_ONE;
+    device->CreateBlendState(&bd, &bsAdditive);
 
     rt.BlendEnable = FALSE;
     device->CreateBlendState(&bd, &bsOpaque);
@@ -246,9 +282,10 @@ void PlanetRenderer::uploadFrameConstants(const Camera& cam, float aspect,
     }
 
     float sunStr  = std::max(0.f, elev);
-    float sunR    = 1.f * sunStr, sunG = 0.92f * sunStr, sunB = 0.75f * sunStr;
-    fc->sunColor[0] = sunR; fc->sunColor[1] = sunG;
-    fc->sunColor[2] = sunB; fc->sunColor[3] = timeOfDay;
+    fc->sunColor[0] = 1.f * sunStr;
+    fc->sunColor[1] = 0.92f * sunStr;
+    fc->sunColor[2] = 0.75f * sunStr;
+    fc->sunColor[3] = timeOfDay;
 
     float ambStr = 0.08f + sunStr * 0.25f;
     fc->ambientColor[0] = 0.15f * ambStr + 0.05f;
@@ -265,7 +302,19 @@ void PlanetRenderer::uploadFrameConstants(const Camera& cam, float aspect,
 }
 
 // ── uploadPlanetConstants ─────────────────────────────────────────────────────
-void PlanetRenderer::uploadPlanetConstants() {
+void PlanetRenderer::uploadPlanetConstants(float timeOfDay) {
+    const float PI    = 3.14159265f;
+    float phase       = timeOfDay * 2.f * PI;
+    float elevation   = -std::cos(phase);   // [-1, 1], positive = sun above horizon
+
+    // Sun direction FROM the scene TOWARD the sun = -lightDir (normalised)
+    float ldx = std::sin(phase) * 0.6f;
+    float ldy = -elevation;
+    float ldz = 0.3f;
+    float ll  = std::sqrt(ldx*ldx + ldy*ldy + ldz*ldz);
+    if (ll > 1e-6f) { ldx/=ll; ldy/=ll; ldz/=ll; }
+    float sdx = -ldx, sdy = -ldy, sdz = -ldz;  // scene→sun
+
     D3D11_MAPPED_SUBRESOURCE ms{};
     ctx->Map(cbPlanet, 0, D3D11_MAP_WRITE_DISCARD, 0, &ms);
     auto* pc = (PlanetConstants*)ms.pData;
@@ -285,6 +334,11 @@ void PlanetRenderer::uploadPlanetConstants() {
     pc->planetParams[1] = cfg.snowLine;
     pc->planetParams[2] = 0.f;
     pc->planetParams[3] = 0.f;
+
+    pc->sunInfo[0] = sdx;
+    pc->sunInfo[1] = sdy;
+    pc->sunInfo[2] = sdz;
+    pc->sunInfo[3] = elevation;   // [-1, 1]
 
     ctx->Unmap(cbPlanet, 0);
 
@@ -315,6 +369,8 @@ void PlanetRenderer::renderPatches() {
         ID3D11RasterizerState* rsWire = nullptr;
         device->CreateRasterizerState(&wrd, &rsWire);
         if (rsWire) { ctx->RSSetState(rsWire); rsWire->Release(); }
+    } else {
+        ctx->RSSetState(rsSolid);
     }
 
     std::vector<PlanetNode*> leaves;
@@ -350,7 +406,33 @@ void PlanetRenderer::renderAtmosphere(const Camera& /*cam*/) {
     ctx->IASetIndexBuffer(atmoIB, DXGI_FORMAT_R32_UINT, 0);
     ctx->DrawIndexed((UINT)atmoIdxCount, 0, 0);
 
-    // Restore to default states
+    ctx->OMSetBlendState(bsOpaque, bf, 0xFFFFFFFF);
+    ctx->OMSetDepthStencilState(dssDepth, 0);
+    ctx->RSSetState(rsSolid);
+}
+
+// ── renderSun ────────────────────────────────────────────────────────────────
+// Draws a camera-facing billboard at the sun's position in the sky.
+// Rendered with additive blending and no depth write so it composites cleanly
+// over the space-black background without blocking anything.
+void PlanetRenderer::renderSun() {
+    if (!showSun || !sunQuadVB || wireframe) return;
+
+    ctx->RSSetState(rsSolidNoCull);
+    ctx->OMSetDepthStencilState(dssNoDepth, 0);      // always on top of depth
+    float bf[4] = {};
+    ctx->OMSetBlendState(bsAdditive, bf, 0xFFFFFFFF); // additive for the glow
+
+    ctx->IASetInputLayout(sunLayout);
+    ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+    ctx->VSSetShader(sunVS, nullptr, 0);
+    ctx->PSSetShader(sunPS, nullptr, 0);
+
+    UINT stride = sizeof(float) * 2, offset = 0;
+    ctx->IASetVertexBuffers(0, 1, &sunQuadVB, &stride, &offset);
+    ctx->Draw(4, 0);
+
+    // Restore states
     ctx->OMSetBlendState(bsOpaque, bf, 0xFFFFFFFF);
     ctx->OMSetDepthStencilState(dssDepth, 0);
     ctx->RSSetState(rsSolid);
@@ -360,11 +442,11 @@ void PlanetRenderer::renderAtmosphere(const Camera& /*cam*/) {
 void PlanetRenderer::render(const Camera& cam, float aspect,
                             float timeOfDay, float simTime) {
     uploadFrameConstants(cam, aspect, timeOfDay, simTime);
-    uploadPlanetConstants();
+    uploadPlanetConstants(timeOfDay);
 
-    // Draw order: opaque terrain first, then transparent atmosphere on top
-    renderPatches();
-    renderAtmosphere(cam);
+    renderPatches();       // opaque terrain
+    renderAtmosphere(cam); // transparent atmosphere shell
+    renderSun();           // additive sun disc (always last so glow is on top)
 }
 
 // ── drawDebugUI ───────────────────────────────────────────────────────────────
@@ -375,6 +457,7 @@ void PlanetRenderer::drawDebugUI() {
 
     ImGui::Checkbox("Wireframe##planet",     &wireframe);
     ImGui::Checkbox("Atmosphere##planet",    &showAtmosphere);
+    ImGui::Checkbox("Sun##planet",        &showSun);
 
     ImGui::SliderFloat("Split Threshold##planet", &cfg.splitThreshold, 0.3f, 3.f);
     if (ImGui::IsItemHovered())
@@ -395,10 +478,12 @@ void PlanetRenderer::shutdown() {
 
     safeRelease(terrainVS); safeRelease(terrainPS);
     safeRelease(atmoVS);    safeRelease(atmoPS);
-    safeRelease(layout);
+    safeRelease(sunVS);     safeRelease(sunPS);
+    safeRelease(layout);    safeRelease(sunLayout);
     safeRelease(cbFrame);   safeRelease(cbPlanet);
     safeRelease(atmoVB);    safeRelease(atmoIB);
+    safeRelease(sunQuadVB);
     safeRelease(rsSolid);   safeRelease(rsSolidNoCull);
-    safeRelease(dssDepth);  safeRelease(dssNoWrite);
-    safeRelease(bsAlpha);   safeRelease(bsOpaque);
+    safeRelease(dssDepth);  safeRelease(dssNoWrite);  safeRelease(dssNoDepth);
+    safeRelease(bsAlpha);   safeRelease(bsAdditive);  safeRelease(bsOpaque);
 }

@@ -38,6 +38,12 @@ struct PlanetRenderer {
     // Input layout (matches PlanetVertex struct)
     ID3D11InputLayout*   layout     = nullptr;
 
+    // Sun shaders + resources
+    ID3D11VertexShader*  sunVS      = nullptr;
+    ID3D11PixelShader*   sunPS      = nullptr;
+    ID3D11InputLayout*   sunLayout  = nullptr;
+    ID3D11Buffer*        sunQuadVB  = nullptr; // 4 corners of a unit quad
+
     // Constant buffers
     ID3D11Buffer*        cbFrame    = nullptr;   // shared layout with world renderer
     ID3D11Buffer*        cbPlanet   = nullptr;   // planet-specific per-draw data
@@ -51,8 +57,10 @@ struct PlanetRenderer {
     ID3D11RasterizerState*   rsSolid     = nullptr;
     ID3D11RasterizerState*   rsSolidNoCull = nullptr;  // atmosphere (no back-face cull)
     ID3D11DepthStencilState* dssDepth    = nullptr;
-    ID3D11DepthStencilState* dssNoWrite  = nullptr;    // atmosphere (depth test, no write)
-    ID3D11BlendState*        bsAlpha     = nullptr;    // atmosphere additive blend
+    ID3D11DepthStencilState* dssNoWrite    = nullptr;   // depth test, no write (atmo)
+    ID3D11DepthStencilState* dssNoDepth    = nullptr;   // no depth test, no write (sun)
+    ID3D11BlendState*        bsAlpha       = nullptr;
+    ID3D11BlendState*        bsAdditive    = nullptr;   // additive blend for sun glow
     ID3D11BlendState*        bsOpaque    = nullptr;
 
     // ── Quadtree ──────────────────────────────────────────────────────────────
@@ -61,6 +69,7 @@ struct PlanetRenderer {
 
     // ── Debug / UI state ──────────────────────────────────────────────────────
     bool  showAtmosphere = true;
+    bool showSun        = true;
     bool  wireframe      = false;
     int   totalNodes     = 0;
     int   totalLeaves    = 0;
@@ -71,6 +80,7 @@ struct PlanetRenderer {
         float planetCenter[4];    // xyz = centre, w = radius
         float atmosphereColor[4]; // rgb = atmosphere tint, w = thickness
         float planetParams[4];    // x = seaLevel, y = snowLine, zw unused
+        float sunInfo[4];          // xyz = scene→sun unit vector, w = elevation [-1,1]
     };
 
     // ── Shared frame constants (identical to Renderer::FrameConstants) ────────
@@ -108,14 +118,16 @@ private:
     bool compileShaders();
     bool createBuffers();
     bool createAtmosphere();
+    bool createSunQuad();
     bool createRenderStates();
 
     void uploadFrameConstants(const Camera& cam, float aspect,
                               float timeOfDay, float simTime);
-    void uploadPlanetConstants();
+    void uploadPlanetConstants(float timeOfDay);
 
     void renderPatches();
     void renderAtmosphere(const Camera& cam);
+    void renderSun();
 
     template<typename T>
     static void safeRelease(T*& p) { if (p) { p->Release(); p = nullptr; } }

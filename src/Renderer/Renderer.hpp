@@ -184,6 +184,7 @@ struct Renderer {
     void shutdown();
     void tickCamera(float dt, const World& world);
     void onMouseMove(int dx, int dy, bool rightDown);
+    void onMouseScroll(float delta);
     void onKey(int vk, bool down);
 
     // Terrain raycast for hover tooltip: returns true and sets outPos/outMat
@@ -204,7 +205,12 @@ private:
     static constexpr int FOV_CONE_MAX_VERTS = FOV_CONE_SEGS * 3;
 
     int   winW = 1280, winH = 800;
-    float moveKeys[6] = {};   // W S A D Q E
+
+    // Movement keys: [0]=W [1]=S [2]=A [3]=D [4]=Z [5]=X [6]=E [7]=Q
+    float moveKeys[8] = {};
+
+    // Mouse wheel accumulator: positive = scroll up = zoom out (move away from planet)
+    float scrollDelta = 0.f;
 
     template<typename T> static void safeRelease(T*& p) {
         if (p) { p->Release(); p = nullptr; }

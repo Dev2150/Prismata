@@ -29,38 +29,41 @@ static void hueToRGB(float hue, float out[3]) {
 }
 
 // ── isVisibleFromCamera ───────────────────────────────────────────────────────
-// Returns false if `worldPos` is on the far side of the planet relative to the
-// camera. We compare the dot product of the surface normal at `worldPos` with
-// the vector from the planet centre to the camera. If the angle between them
-// is greater than ~90° (plus a small over-the-horizon margin), the point is
-// occluded by the planet body and should be culled.
+// A surface point P is visible from camera C if and only if the angle ∠POC
+// (at the planet centre O) is less than the geometric horizon angle ∠TOC,
+// where T is the tangent point from C to the sphere.
+//
+// In the right triangle OTC (right angle at T):
+//   cos(∠TOC) = OT / OC  =  R / camDist
+//
+// So P is visible when:
+//   dot( (P-O)/|P-O|,  (C-O)/|C-O| )  >  R / |C-O|
+//
+// We add a small negative bias (-0.02) to cull a thin band just before the
+// true horizon, which avoids pop-in on entities at the extreme edge of sight.
 static bool isVisibleFromCamera(const Vec3& worldPos, const Float3& camPos) {
     const Vec3& pc = g_planet_surface.center;
 
     // Direction from planet centre to the entity (= outward surface normal)
     Vec3 toEntity = (worldPos - pc).normalised();
 
-    // Direction from planet centre to the camera
-    Vec3 toCam = {
+    Vec3 toCamVec = {
         camPos.x - pc.x,
         camPos.y - pc.y,
         camPos.z - pc.z
     };
-    float camDist = toCam.len();
+    float camDist = toCamVec.len();
     if (camDist < 1e-3f) return true;
-    toCam = toCam * (1.f / camDist);
 
+    Vec3 toCam = toCamVec * (1.f / camDist);
     float dotVal = toEntity.dot(toCam);
 
-    // The geometric horizon angle: cos(asin(R / camDist))
-    // Points beyond this are behind the planet limb.
-    // We subtract a small bias (0.05) to cull slightly before the true horizon,
-    // avoiding pop-in artefacts on entities right at the edge.
+    // Correct geometric horizon threshold: cos(horizon angle at planet centre)
     float R = g_planet_surface.radius;
-    float sinHorizon = (camDist > R) ? (R / camDist) : 1.f;
-    float cosHorizon = -std::sqrt(std::max(0.f, 1.f - sinHorizon * sinHorizon));
+    float horizonDot = (camDist > R) ? (R / camDist) : 1.f;
 
-    return dotVal > cosHorizon - 0.05f;
+    // Small margin so entities right at the edge don't flicker
+    return dotVal > horizonDot - 0.02f;
 }
 
 // ── renderCreatures ───────────────────────────────────────────────────────────

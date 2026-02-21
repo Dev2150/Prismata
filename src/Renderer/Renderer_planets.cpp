@@ -31,20 +31,23 @@ static const float PLANT_COLORS[3][4] = {
 
 static const float PLANT_SIZES[3] = { 0.6f, 1.2f, 2.0f };
 
-// Shared with Renderer_Creatures.cpp logic — checks if a surface point is
-// visible from the camera (not occluded by the planet body).
+// ── plantVisibleFromCamera ────────────────────────────────────────────────────
+// Identical geometric test to isVisibleFromCamera in Renderer_Creatures.cpp.
+// A surface point P is visible only when the angle ∠POC < arccos(R / camDist).
+// Threshold dot product = R / camDist  (cosine of the horizon angle at O).
 static bool plantVisibleFromCamera(const Vec3& worldPos, const Float3& camPos) {
     const Vec3& pc = g_planet_surface.center;
     Vec3 toEntity = (worldPos - pc).normalised();
-    Vec3 toCam = { camPos.x - pc.x, camPos.y - pc.y, camPos.z - pc.z };
-    float camDist = toCam.len();
+    Vec3 toCamVec = { camPos.x - pc.x, camPos.y - pc.y, camPos.z - pc.z };
+    float camDist = toCamVec.len();
     if (camDist < 1e-3f) return true;
-    toCam = toCam * (1.f / camDist);
+
+    Vec3 toCam   = toCamVec * (1.f / camDist);
     float dotVal = toEntity.dot(toCam);
     float R = g_planet_surface.radius;
-    float sinH = (camDist > R) ? (R / camDist) : 1.f;
-    float cosH = -std::sqrt(std::max(0.f, 1.f - sinH * sinH));
-    return dotVal > cosH - 0.05f;
+    float horizonDot = (camDist > R) ? (R / camDist) : 1.f;
+
+    return dotVal > horizonDot - 0.02f;
 }
 
 void Renderer::renderPlants(const World& world) {

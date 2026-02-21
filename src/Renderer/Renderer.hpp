@@ -50,8 +50,8 @@
 // ── Camera ────────────────────────────────────────────────────────────────────
 struct Camera {
     Float3 pos    = {64.f, 40.f, 64.f};
-    float  yaw    = 0.f;    // radians
-    float  pitch  = -0.6f;  // radians (negative = looking down)
+    Float3 fwd    = {0.f, 0.f, 1.f};
+    Float3 up     = {0.f, 1.f, 0.f};
     float  fovY   = 60.f;   // degrees
     float  translation_speed = 200.f;
     float  zoom_speed_coefficient = 0.1f;
@@ -59,21 +59,15 @@ struct Camera {
     float  follow_height  = 10.f;   // How high above the creature
     float  follow_speed   = 5.f;   // How quickly the camera snaps to position
 
-    // Forward vector from yaw+pitch
     Float3 forward() const {
-        return {
-            std::sin(yaw) * std::cos(pitch),
-            std::sin(pitch),
-            std::cos(yaw) * std::cos(pitch)
-        };
+        return fwd;
     }
 
     Mat4 viewMatrix() const {
-        Float3 f = forward();
         return Mat4::lookAtRH(
             pos.x, pos.y, pos.z,
-            pos.x + f.x, pos.y + f.y, pos.z + f.z,
-            0.f, 1.f, 0.f);
+            pos.x + fwd.x, pos.y + fwd.y, pos.z + fwd.z,
+            up.x, up.y, up.z);
     }
 
     Mat4 projMatrix(float aspect) const {

@@ -130,10 +130,10 @@ int RunApplication()
     }
 
     // ── Camera: start above the planet surface ────────────────────────────────
-    // Planet center = (0, -1800, 0), radius = 1000 → top surface ≈ y = -800.
+    // Planet center = (0, -1800, 0), radius = 1000 → top surface ≈ y = -1800+100= -800.
     g_renderer.camera.pos   = {0.f, -600.f, 0.f};
-    g_renderer.camera.yaw   = 0.f;
-    g_renderer.camera.pitch = -1.5f;
+    g_renderer.camera.fwd   = {0.f, std::sin(-1.5f), std::cos(-1.5f)};
+    g_renderer.camera.up    = {0.f, 1.f, 0.f};
     g_renderer.camera.fovY  = 60.f;
     g_renderer.camera.translation_speed = 200.f;
 

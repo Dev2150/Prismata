@@ -72,12 +72,38 @@ void Renderer::tickCamera(float dt, const World& world) {
             creature.pos.z + creatureNormal.z * dNormal + east.z * dEast + north.z * dNorth,
         };
 
+        Vec3 camNormalBefore = {camera.up.x, camera.up.y, camera.up.z};
+
         // Exponential smooth approach: blend = 1 - e^(-speed*dt)
         // Frame-rate independent — gives the same visual speed at any FPS.
         float blend = 1.0f - std::exp(-dt * camera.follow_speed);
         camera.pos.x += (target.x - camera.pos.x) * blend;
         camera.pos.y += (target.y - camera.pos.y) * blend;
         camera.pos.z += (target.z - camera.pos.z) * blend;
+
+        Vec3 newCamPos = {camera.pos.x, camera.pos.y, camera.pos.z};
+        Vec3 camNormalAfter = g_planet_surface.normalAt(newCamPos);
+
+        Vec3 axis = {
+            camNormalBefore.y * camNormalAfter.z - camNormalBefore.z * camNormalAfter.y,
+            camNormalBefore.z * camNormalAfter.x - camNormalBefore.x * camNormalAfter.z,
+            camNormalBefore.x * camNormalAfter.y - camNormalBefore.y * camNormalAfter.x
+        };
+        float sinA = axis.len();
+        float cosA = camNormalBefore.dot(camNormalAfter);
+
+        if (sinA > 1e-6f) {
+            axis = axis * (1.f / sinA);
+            Vec3 f = {camera.fwd.x, camera.fwd.y, camera.fwd.z};
+            Vec3 cross_axis_f = {
+                axis.y * f.z - axis.z * f.y,
+                axis.z * f.x - axis.x * f.z,
+                axis.x * f.y - axis.y * f.x
+            };
+            f = f * cosA + cross_axis_f * sinA + axis * axis.dot(f) * (1.f - cosA);
+            camera.fwd = {f.normalised().x, f.normalised().y, f.normalised().z};
+        }
+        camera.up = {camNormalAfter.x, camNormalAfter.y, camNormalAfter.z};
 
     }
     else {
@@ -87,6 +113,7 @@ void Renderer::tickCamera(float dt, const World& world) {
         // ── Spherical free-cam ────────────────────────────────────────────────
         Vec3 camPos3 = { camera.pos.x, camera.pos.y, camera.pos.z };
         Vec3 camNormal = g_planet_surface.normalAt(camPos3);
+        camera.up = {camNormal.x, camNormal.y, camNormal.z};
 
         // ── Q/E yaw rotation ─────────────────────────────────────────────────
         // Rotate camera.yaw around the planet surface normal.
@@ -94,11 +121,17 @@ void Renderer::tickCamera(float dt, const World& world) {
         // any gimbal lock issues because we keep yaw/pitch as canonical state.
         float yawInput = moveKeys[6] - moveKeys[7];  // E - Q
         if (std::abs(yawInput) > 1e-4f) {
-            camera.yaw += yawInput * dt * 1.5f;
-            // Keep yaw in [-pi, pi] range to prevent float drift
-            const float PI = 3.14159265f;
-            while (camera.yaw >  PI) camera.yaw -= 2.f * PI;
-            while (camera.yaw < -PI) camera.yaw += 2.f * PI;
+            float yawAngle = yawInput * dt * 1.5f;
+            Vec3 f = {camera.fwd.x, camera.fwd.y, camera.fwd.z};
+            Vec3 u = {camera.up.x, camera.up.y, camera.up.z};
+            Vec3 cross_u_f = {
+                u.y * f.z - u.z * f.y,
+                u.z * f.x - u.x * f.z,
+                u.x * f.y - u.y * f.x
+            };
+            float dot_u_f = u.dot(f);
+            f = f * std::cos(yawAngle) + cross_u_f * std::sin(yawAngle) + u * dot_u_f * (1.f - std::cos(yawAngle));
+            camera.fwd = {f.normalised().x, f.normalised().y, f.normalised().z};
         }
 
         // ── Mouse wheel zoom (radial movement) ───────────────────────────────
@@ -112,9 +145,7 @@ void Renderer::tickCamera(float dt, const World& world) {
         }
 
         // Camera forward projected onto the tangent plane
-        Float3 fwd3  = camera.forward();
-        Vec3   fwdV  = { fwd3.x, fwd3.y, fwd3.z };
-
+        Vec3 fwdV  = { camera.fwd.x, camera.fwd.y, camera.fwd.z };
         float fdotn  = fwdV.dot(camNormal);
         Vec3 tangFwd = Vec3{ fwdV.x - camNormal.x * fdotn,
                              fwdV.y - camNormal.y * fdotn,
@@ -159,13 +190,9 @@ void Renderer::tickCamera(float dt, const World& world) {
 
         // ── Auto-correct orientation for sphere curvature ─────────────────────
         // When the camera moves along the sphere surface, the local "up" rotates.
-        // We apply the same rotation to the camera's forward direction so the
-        // horizon stays level without the player having to compensate manually.
-        //
-        // Instead of extracting yaw/pitch from the rotated forward vector
-        // (which causes gimbal lock and spinning near Z=0), we maintain yaw/pitch
-        // as the canonical state and only apply the curvature correction as a delta
-        // to the existing yaw angle. This is stable everywhere on the sphere.
+        // We apply the exact same rotation to the camera's forward direction using
+        // Rodrigues' rotation formula so the camera maintains its exact relative
+        // pitch and yaw to the ground.
         if (moving) {
             Vec3 newCamPos   = { camera.pos.x, camera.pos.y, camera.pos.z };
             Vec3 camNormalAfter = g_planet_surface.normalAt(newCamPos);
@@ -180,30 +207,18 @@ void Renderer::tickCamera(float dt, const World& world) {
             float cosA = camNormalBefore.dot(camNormalAfter);
 
             if (sinA > 1e-6f) {
-                axis = axis * (1.f / sinA);  // normalise
+                axis = axis * (1.f / sinA);
 
-                Float3 fwd3 = camera.forward();
-                Vec3 fwd = {fwd3.x, fwd3.y, fwd3.z};
-
-                // Rodrigues' rotation formula: v_rot = v*cos(θ) + (axis×v)*sin(θ) + axis*(axis·v)*(1-cos(θ))
-                Vec3 cross_axis_fwd = {
-                    axis.y * fwd.z - axis.z * fwd.y,
-                    axis.z * fwd.x - axis.x * fwd.z,
-                    axis.x * fwd.y - axis.y * fwd.x
+                Vec3 f = {camera.fwd.x, camera.fwd.y, camera.fwd.z};
+                Vec3 cross_axis_f = {
+                    axis.y * f.z - axis.z * f.y,
+                    axis.z * f.x - axis.x * f.z,
+                    axis.x * f.y - axis.y * f.x
                 };
-
-                Vec3 fwd_rot = fwd * cosA + cross_axis_fwd * sinA + axis * axis.dot(fwd) * (1.f - cosA);
-                fwd_rot = fwd_rot.normalised();
-
-                // Extract new pitch and yaw from the rotated forward vector
-                camera.pitch = std::asin(std::max(-1.f, std::min(1.f, fwd_rot.y)));
-                camera.yaw   = std::atan2(fwd_rot.x, fwd_rot.z);
-
-                // Keep yaw in [-pi, pi]
-                const float PI = 3.14159265f;
-                while (camera.yaw >  PI) camera.yaw -= 2.f * PI;
-                while (camera.yaw < -PI) camera.yaw += 2.f * PI;
+                f = f * cosA + cross_axis_f * sinA + axis * axis.dot(f) * (1.f - cosA);
+                camera.fwd = {f.normalised().x, f.normalised().y, f.normalised().z};
             }
+            camera.up = {camNormalAfter.x, camNormalAfter.y, camNormalAfter.z};
         }
     }
 }
@@ -214,14 +229,49 @@ void Renderer::tickCamera(float dt, const World& world) {
 // creature without the camera auto-correcting the angle.
 void Renderer::onMouseMove(int dx, int dy, bool rightDown) {
     if (!rightDown) return;
-    camera.yaw   += dx * 0.003f;
-    camera.pitch += dy * 0.003f;
-    camera.pitch  = std::max(-1.5f, std::min(1.5f, camera.pitch));
 
-    // Keep yaw in [-pi, pi]
-    const float PI = 3.14159265f;
-    while (camera.yaw >  PI) camera.yaw -= 2.f * PI;
-    while (camera.yaw < -PI) camera.yaw += 2.f * PI;
+    float yawAngle = dx * -0.003f;
+    float pitchAngle = dy * -0.003f;
+
+    Vec3 f = {camera.fwd.x, camera.fwd.y, camera.fwd.z};
+    Vec3 u = {camera.up.x, camera.up.y, camera.up.z};
+
+    Vec3 r = {
+        f.y * u.z - f.z * u.y,
+        f.z * u.x - f.x * u.z,
+        f.x * u.y - f.y * u.x
+    };
+    float rlen = r.len();
+    if (rlen < 1e-5f) {
+        r = {1, 0, 0};
+    } else {
+        r = r * (1.f / rlen);
+    }
+
+    Vec3 cross_u_f = {
+        u.y * f.z - u.z * f.y,
+        u.z * f.x - u.x * f.z,
+        u.x * f.y - u.y * f.x
+    };
+    float dot_u_f = u.dot(f);
+    f = f * std::cos(yawAngle) + cross_u_f * std::sin(yawAngle) + u * dot_u_f * (1.f - std::cos(yawAngle));
+    f = f.normalised();
+
+    Vec3 cross_r_f = {
+        r.y * f.z - r.z * f.y,
+        r.z * f.x - r.x * f.z,
+        r.x * f.y - r.y * f.x
+    };
+    float dot_r_f = r.dot(f);
+    Vec3 f_pitch = f * std::cos(pitchAngle) + cross_r_f * std::sin(pitchAngle) + r * dot_r_f * (1.f - std::cos(pitchAngle));
+    f_pitch = f_pitch.normalised();
+
+    float new_dot_u_f = u.dot(f_pitch);
+    if (new_dot_u_f < 0.99f && new_dot_u_f > -0.99f) {
+        f = f_pitch;
+    }
+
+    camera.fwd = {f.x, f.y, f.z};
 }
 
 // ── onMouseScroll ─────────────────────────────────────────────────────────────

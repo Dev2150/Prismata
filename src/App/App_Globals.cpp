@@ -31,8 +31,8 @@ SimUI        g_ui;        // all ImGui panels; owns selectedID / showDemoWindow 
 // We place the camera at y = -800 + 200 = -600, looking straight down.
 void SetupPlanetCamera(Renderer& rend) {
     rend.camera.pos   = {0.f, -600.f, 0.f};
-    rend.camera.yaw   = 0.f;
-    rend.camera.pitch = -1.2f;   // steep downward angle to see the surface
+    rend.camera.fwd   = {0.f, std::sin(-1.2f), std::cos(-1.2f)};
+    rend.camera.up    = {0.f, 1.f, 0.f};
     rend.camera.fovY  = 60.f;
     rend.camera.translation_speed = 200.f;  // faster movement to traverse the sphere
 }

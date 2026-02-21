@@ -162,7 +162,7 @@ bool PlanetRenderer::createRenderStates() {
     D3D11_RASTERIZER_DESC rd{};
     rd.DepthClipEnable = TRUE;
 
-    rd.FillMode = D3D11_FILL_SOLID; rd.CullMode = D3D11_CULL_BACK;
+    rd.FillMode = D3D11_FILL_SOLID; rd.CullMode = D3D11_CULL_NONE;
     device->CreateRasterizerState(&rd, &rsSolid);
 
     rd.CullMode = D3D11_CULL_NONE;

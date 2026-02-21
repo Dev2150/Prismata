@@ -1,4 +1,4 @@
-// Prismata – Evolution Simulation
+// KyberPlanet – Evolution Simulation
 // Entry point: delegates everything to App.cpp / RunApplication().
 #include "App/App.hpp"
 

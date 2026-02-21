@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(Prismata LANGUAGES CXX)
+project(KyberPlanet LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -47,9 +47,9 @@ set(SOURCES
         src/UI/Notifications.cpp
 )
 
-add_executable(Prismata WIN32 ${SOURCES})
+add_executable(KyberPlanet WIN32 ${SOURCES})
 
-target_include_directories(Prismata PRIVATE
+target_include_directories(KyberPlanet PRIVATE
     src/
     imgui/
     imgui/backends/
@@ -57,7 +57,7 @@ target_include_directories(Prismata PRIVATE
 )
 
 # ── Windows / DirectX definitions ─────────────────────────────────────────────
-target_compile_definitions(Prismata PRIVATE
+target_compile_definitions(KyberPlanet PRIVATE
     UNICODE
     _UNICODE
     NOMINMAX
@@ -66,7 +66,7 @@ target_compile_definitions(Prismata PRIVATE
 )
 
 # ── DirectX 11 + Win32 libs ───────────────────────────────────────────────────
-target_link_libraries(Prismata PRIVATE
+target_link_libraries(KyberPlanet PRIVATE
     d3d11
     dxgi
     d3dcompiler
@@ -74,18 +74,18 @@ target_link_libraries(Prismata PRIVATE
 )
 
 if(MINGW)
-    target_link_libraries(Prismata PRIVATE dxguid uuid)
+    target_link_libraries(KyberPlanet PRIVATE dxguid uuid)
 endif()
 
 # ── Compiler flags ────────────────────────────────────────────────────────────
 if(MSVC)
-    target_compile_options(Prismata PRIVATE
+    target_compile_options(KyberPlanet PRIVATE
         $<$<CONFIG:Release>:/O2 /fp:fast>
         $<$<CONFIG:Debug>:/W4 /WX->
     )
 else()
     # GCC / MinGW (CLion default)
-    target_compile_options(Prismata PRIVATE
+    target_compile_options(KyberPlanet PRIVATE
         -Wall
         $<$<CONFIG:Release>:-O2 -ffast-math>
         $<$<CONFIG:Debug>:-g -Og>

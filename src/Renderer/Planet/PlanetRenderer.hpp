@@ -1,7 +1,7 @@
 #pragma once
 // ── PlanetRenderer.hpp ────────────────────────────────────────────────────────
 // High-level D3D11 renderer for the procedural planet.
-// Integrates into the existing Prismata render loop alongside the world terrain.
+// Integrates into the existing KyberPlanet render loop alongside the world terrain.
 //
 // USAGE IN App.cpp / RunApplication():
 // ─────────────────────────────────────

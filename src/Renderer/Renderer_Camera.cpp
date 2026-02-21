@@ -7,10 +7,14 @@
 // ── tickCamera ────────────────────────────────────────────────────────────────
 // Two modes:
 //   POSSESS: camera translates rigidly with the creature; angle and distance
-//            are frozen at whatever they were when possession began. The offset
-//            (camera world-pos minus creature world-pos) is recorded on the
-//            first tick after playerID is set and held constant thereafter.
-//   FREE:    WASD/QF keyboard movement in the camera's local frame.
+//            are frozen at whatever they were when possession began.
+//   FREE:    WASD/QE keyboard movement in the camera's local frame.
+//            W/S  = forward/backward along tangent plane
+//            A/D  = strafe left/right along tangent plane
+//            F    = radial out (away from planet)
+//            R    = radial in  (toward planet)
+//            Q/E  = yaw left/right (rotate camera heading)
+//            Mouse wheel = zoom (radial move)
 void Renderer::tickCamera(float dt, const World& world) {
 
     if (playerID != INVALID_ID) {
@@ -81,25 +85,46 @@ void Renderer::tickCamera(float dt, const World& world) {
         hasPossessOffset = false;
 
         // ── Spherical free-cam ────────────────────────────────────────────────
-        // Capture the planet-surface normal BEFORE moving so we can correct
-        // the camera orientation for the sphere curvature after moving.
-        Vec3 camNormalBefore = g_planet_surface.normalAt(
-            Vec3{camera.pos.x, camera.pos.y, camera.pos.z});
+        Vec3 camPos3 = { camera.pos.x, camera.pos.y, camera.pos.z };
+        Vec3 camNormal = g_planet_surface.normalAt(camPos3);
 
-        // Camera's "look" forward projected onto the tangent plane
+        // ── Q/E yaw rotation ─────────────────────────────────────────────────
+        // Rotate camera.yaw around the planet surface normal.
+        // This lets the player change the "forward" direction smoothly without
+        // any gimbal lock issues because we keep yaw/pitch as canonical state.
+        float yawInput = moveKeys[6] - moveKeys[7];  // E - Q
+        if (std::abs(yawInput) > 1e-4f) {
+            camera.yaw += yawInput * dt * 1.5f;
+            // Keep yaw in [-pi, pi] range to prevent float drift
+            const float PI = 3.14159265f;
+            while (camera.yaw >  PI) camera.yaw -= 2.f * PI;
+            while (camera.yaw < -PI) camera.yaw += 2.f * PI;
+        }
+
+        // ── Mouse wheel zoom (radial movement) ───────────────────────────────
+        if (std::abs(scrollDelta) > 1e-4f) {
+            Vec3 radialDir = camNormal;  // outward from planet centre
+            float zoomSpd  = camera.translation_speed * 0.3f;
+            camera.pos.x  += radialDir.x * scrollDelta * zoomSpd;
+            camera.pos.y  += radialDir.y * scrollDelta * zoomSpd;
+            camera.pos.z  += radialDir.z * scrollDelta * zoomSpd;
+            scrollDelta = 0.f;
+        }
+
+        // Camera forward projected onto the tangent plane
         Float3 fwd3  = camera.forward();
         Vec3   fwdV  = { fwd3.x, fwd3.y, fwd3.z };
 
-        float fdotn  = fwdV.dot(camNormalBefore);
-        Vec3 tangFwd = Vec3{ fwdV.x - camNormalBefore.x * fdotn,
-                             fwdV.y - camNormalBefore.y * fdotn,
-                             fwdV.z - camNormalBefore.z * fdotn }.normalised();
+        float fdotn  = fwdV.dot(camNormal);
+        Vec3 tangFwd = Vec3{ fwdV.x - camNormal.x * fdotn,
+                             fwdV.y - camNormal.y * fdotn,
+                             fwdV.z - camNormal.z * fdotn }.normalised();
 
-        // Tangential right = tangFwd × normal (points "east")
+        // Tangential right = tangFwd × normal
         Vec3 tangRight = Vec3{
-            tangFwd.y * camNormalBefore.z - tangFwd.z * camNormalBefore.y,
-            tangFwd.z * camNormalBefore.x - tangFwd.x * camNormalBefore.z,
-            tangFwd.x * camNormalBefore.y - tangFwd.y * camNormalBefore.x
+            tangFwd.y * camNormal.z - tangFwd.z * camNormal.y,
+            tangFwd.z * camNormal.x - tangFwd.x * camNormal.z,
+            tangFwd.x * camNormal.y - tangFwd.y * camNormal.x
         }.normalised();
 
         float spd = camera.translation_speed * dt;
@@ -119,6 +144,9 @@ void Renderer::tickCamera(float dt, const World& world) {
         bool moving = (std::abs(fwdInput) > 1e-4f) ||
                       (std::abs(strafeInput) > 1e-4f);
 
+        // Store camera normal before movement for curvature correction
+        Vec3 camNormalBefore = camNormal;
+
         camera.pos.x += (tangFwd.x   * fwdInput   +
                          tangRight.x * strafeInput +
                          camNormalBefore.x * radialInput) * spd;
@@ -130,17 +158,17 @@ void Renderer::tickCamera(float dt, const World& world) {
                          camNormalBefore.z * radialInput) * spd;
 
         // ── Auto-correct orientation for sphere curvature ─────────────────────
-        // When the camera translates along the sphere surface, the local "up"
-        // direction (planet normal) rotates. We apply the same rotation to the
-        // camera's forward vector so the view direction stays constant relative
-        // to the local tangent frame (i.e., the horizon stays at the same height
-        // in the viewport without the player needing to compensate manually).
+        // When the camera moves along the sphere surface, the local "up" rotates.
+        // We apply the same rotation to the camera's forward direction so the
+        // horizon stays level without the player having to compensate manually.
         //
-        // We only correct for tangential movement (fwd/strafe), not radial
-        // movement (F/Q), which is purely altitude change and needs no correction.
+        // Instead of extracting yaw/pitch from the rotated forward vector
+        // (which causes gimbal lock and spinning near Z=0), we maintain yaw/pitch
+        // as the canonical state and only apply the curvature correction as a delta
+        // to the existing yaw angle. This is stable everywhere on the sphere.
         if (moving) {
-            Vec3 camNormalAfter = g_planet_surface.normalAt(
-                Vec3{camera.pos.x, camera.pos.y, camera.pos.z});
+            Vec3 newCamPos   = { camera.pos.x, camera.pos.y, camera.pos.z };
+            Vec3 camNormalAfter = g_planet_surface.normalAt(newCamPos);
 
             // Rotation axis = cross(N_before, N_after)
             Vec3 axis = {
@@ -154,23 +182,25 @@ void Renderer::tickCamera(float dt, const World& world) {
             if (sinA > 1e-6f) {
                 axis = axis * (1.f / sinA);  // normalise
 
-                // Rodrigues' rotation formula applied to the camera forward vector
-                Vec3 fwd = { fwd3.x, fwd3.y, fwd3.z };
-                float dot = fwd.dot(axis);
-                Vec3 cross3 = {
-                    axis.y * fwd.z - axis.z * fwd.y,
-                    axis.z * fwd.x - axis.x * fwd.z,
-                    axis.x * fwd.y - axis.y * fwd.x
-                };
-                Vec3 rotFwd = {
-                    fwd.x * cosA + cross3.x * sinA + axis.x * dot * (1.f - cosA),
-                    fwd.y * cosA + cross3.y * sinA + axis.y * dot * (1.f - cosA),
-                    fwd.z * cosA + cross3.z * sinA + axis.z * dot * (1.f - cosA),
-                };
+                // Project axis onto the current surface normal to get the
+                // yaw-equivalent rotation component. This tells us how much the
+                // "north" direction has rotated as seen from the local frame,
+                // which is exactly what we need to add to camera.yaw.
+                //
+                // The signed angle of rotation projected onto the normal axis:
+                //   yaw_delta = atan2(sinA * dot(axis, normal), cosA)
+                // But since sinA is small per-frame, we can use the small-angle
+                // approximation: yaw_delta ≈ sinA * dot(axis, normal_before)
+                float yawDelta = sinA * axis.dot(camNormalBefore);
+                camera.yaw += yawDelta;
 
-                // Extract new absolute yaw and pitch from the rotated forward
-                camera.pitch = std::asin(std::max(-1.f, std::min(1.f, rotFwd.y)));
-                camera.yaw   = std::atan2(rotFwd.x, rotFwd.z);
+                // Keep yaw in [-pi, pi]
+                const float PI = 3.14159265f;
+                while (camera.yaw >  PI) camera.yaw -= 2.f * PI;
+                while (camera.yaw < -PI) camera.yaw += 2.f * PI;
+
+                // Pitch is unchanged: moving along the surface doesn't tilt
+                // the camera up or down relative to the local horizon.
             }
         }
     }
@@ -184,11 +214,24 @@ void Renderer::onMouseMove(int dx, int dy, bool rightDown) {
     if (!rightDown) return;
     camera.yaw   += dx * 0.003f;
     camera.pitch += dy * 0.003f;
-    camera.pitch  = std::max(-1.5f, std::min(1.5f, camera.pitch));  // full sphere allowed
+    camera.pitch  = std::max(-1.5f, std::min(1.5f, camera.pitch));
+
+    // Keep yaw in [-pi, pi]
+    const float PI = 3.14159265f;
+    while (camera.yaw >  PI) camera.yaw -= 2.f * PI;
+    while (camera.yaw < -PI) camera.yaw += 2.f * PI;
+}
+
+// ── onMouseScroll ─────────────────────────────────────────────────────────────
+// Mouse wheel scrolls radially (zoom in/out relative to planet surface).
+// Positive delta = scroll up = move away from planet.
+void Renderer::onMouseScroll(float delta) {
+    scrollDelta += delta;
 }
 
 // ── onKey ─────────────────────────────────────────────────────────────────────
-// Stores key state (1=down, 0=up) for the six movement keys.
+// Stores key state (1=down, 0=up) for movement keys.
+// W/S = forward/backward  A/D = strafe  F/R = radial  Q/E = yaw rotation
 void Renderer::onKey(int vk, bool down) {
     float v = down ? 1.f : 0.f;
     switch (vk) {
@@ -196,8 +239,10 @@ void Renderer::onKey(int vk, bool down) {
         case 'R': moveKeys[1] = v; break;  // backward (tangential)
         case 'A': moveKeys[2] = v; break;  // strafe right
         case 'S': moveKeys[3] = v; break;  // strafe left
-        case 'F': moveKeys[4] = v; break;  // radial out (away from planet)
-        case 'Q': moveKeys[5] = v; break;  // radial in  (toward planet)
+        case 'Z': moveKeys[4] = v; break;  // radial out (away from planet)
+        case 'X': moveKeys[5] = v; break;  // radial in  (toward planet)
+        case 'Q': moveKeys[6] = v; break;  // yaw right (rotate heading clockwise)
+        case 'F': moveKeys[7] = v; break;  // yaw left  (rotate heading counter-clockwise)
     }
 }
 

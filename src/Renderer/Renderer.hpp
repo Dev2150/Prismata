@@ -197,6 +197,7 @@ private:
     bool createDepthBuffer(int w, int h);
     void updateFrameConstants(const World& world, float aspect);
     void renderCreatures(const World& world);
+    void renderPlants(const World& world);       // ← NEW
     void renderFOVCone(const World& world);
 
     static constexpr int FOV_CONE_SEGS = 64;

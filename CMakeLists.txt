@@ -43,6 +43,7 @@ set(SOURCES
     implot/implot.cpp
     implot/implot_items.cpp
     implot/implot_demo.cpp
+        src/Renderer/Renderer_planets.cpp
 )
 
 add_executable(Prismata WIN32 ${SOURCES})

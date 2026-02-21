@@ -5,11 +5,7 @@
 
 #include "World/World.hpp"
 
-// ── Renderer_Frame.cpp ────────────────────────────────────────────────────────
-// This is the main per-frame orchestrator — it calls the sub-renderers in order.
-
 // ── Day/night lighting helpers ─────────────────────────────────────────────────
-
 // Smooth step in [0,1]: 0 when x<=lo, 1 when x>=hi, smooth cubic between.
 static float smoothStep(float lo, float hi, float x) {
     float t = std::max(0.f, std::min(1.f, (x - lo) / (hi - lo)));
@@ -158,6 +154,10 @@ void Renderer::render(const World& world, float aspectRatio) {
 
     if (showFOVCone)
         renderFOVCone(world);
-    // creature billboards
+
+    // Plants first (behind creatures)
+    renderPlants(world);
+
+    // Creature billboards on top
     renderCreatures(world);
 }

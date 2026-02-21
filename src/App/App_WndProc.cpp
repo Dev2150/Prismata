@@ -30,21 +30,21 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             // so we don't move the camera while the user types in a file path etc.
         case WM_KEYDOWN:
         case WM_KEYUP:
-            if (!ImGui::GetIO().WantCaptureKeyboard) {
-                g_renderer.onKey((int)wParam, msg == WM_KEYDOWN);
+            // Always forward to renderer for camera movement (regardless of ImGui focus)
+            g_renderer.onKey((int)wParam, msg == WM_KEYDOWN);
 
-                // ── Space bar: toggle pause ──────────────────────────────────────
-                if (msg == WM_KEYDOWN && wParam == VK_SPACE)
+            if (msg == WM_KEYDOWN) {
+                // ── Space bar: toggle pause ── always active ──────────────────────
+                if (wParam == VK_SPACE)
                     g_world.cfg.paused = !g_world.cfg.paused;
 
-                // ── +/= key or numpad +: increase simulation speed ───────────────
-                if (msg == WM_KEYDOWN && (wParam == VK_OEM_PLUS || wParam == VK_ADD)) {
+                // ── +/= key or numpad +: increase simulation speed ─────────────────
+                if (wParam == VK_OEM_PLUS || wParam == VK_ADD)
                     g_world.cfg.simSpeed = std::min(20.f, g_world.cfg.simSpeed * 1.25f);
-                }
-                // ── - key or numpad -: decrease simulation speed ─────────────────
-                if (msg == WM_KEYDOWN && (wParam == VK_OEM_MINUS || wParam == VK_SUBTRACT)) {
+
+                // ── - key or numpad -: decrease simulation speed ───────────────────
+                if (wParam == VK_OEM_MINUS || wParam == VK_SUBTRACT)
                     g_world.cfg.simSpeed = std::max(0.1f, g_world.cfg.simSpeed / 1.25f);
-                }
             }
             return 0;
 
@@ -74,8 +74,8 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             RECT rc; ::GetClientRect(hWnd, &rc);
             float W = (float)(rc.right - rc.left);
             float H = (float)(rc.bottom - rc.top);
-            float mx = (float)(short)LOWORD(lParam);
-            float my = (float)(short)HIWORD(lParam);
+            float mx = (short)LOWORD(lParam);
+            float my = (short)HIWORD(lParam);
 
             // Convert pixel coordinates to Normalised Device Coordinates (NDC):
             //   NDC X: -1 (left edge) to +1 (right edge)
@@ -135,15 +135,26 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             return 0;
         }
 
-            // WM_CHAR is better than WM_KEYDOWN for single-press actions because it
-            // fires once per key press (WM_KEYDOWN repeats while held).
+            // ── WM_CHAR: single-press actions ─────────────────────────────────────────
         case WM_CHAR:
-            // ── possess a random living creature ─────────────────────────────
+            // ── P: toggle possession of a creature ──────────────────────────────
+            // If not possessing: possess selected creature (or random if none selected)
+            // If possessing: release back to free cam
             if ((wParam == 'p' || wParam == 'P') && !ImGui::GetIO().WantCaptureKeyboard) {
-                EntityID id_random = g_world.findRandomLivingCreature();
-                if (id_random != INVALID_ID) {
-                    g_renderer.playerID = id_random;  // camera follows this creature
-                    g_ui.selectedID = id_random;      // also select it in the inspector
+                if (g_renderer.playerID != INVALID_ID) {
+                    // Release possession
+                    g_renderer.playerID      = INVALID_ID;
+                    g_renderer.hasPossessOffset = false;
+                    g_renderer.showFogOfWar  = false;
+                } else {
+                    // Possess: prefer selected creature, fall back to random
+                    EntityID toPos = g_ui.selectedID;
+                    if (toPos == INVALID_ID)
+                        toPos = g_world.findRandomLivingCreature();
+                    if (toPos != INVALID_ID) {
+                        g_renderer.playerID = toPos;
+                        g_ui.selectedID     = toPos;
+                    }
                 }
             }
             return 0;

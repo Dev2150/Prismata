@@ -15,6 +15,7 @@ cbuffer FrameConstants : register(b0) {
     float4   camPos;
     float4   lightDir;
     float4   fowData;
+    float4   fowFacing;
     float4   sunColor;
     float4   ambientColor;
 };

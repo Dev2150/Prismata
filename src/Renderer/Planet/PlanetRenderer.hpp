@@ -91,6 +91,7 @@ struct PlanetRenderer {
         float camPos[4];
         float lightDir[4];
         float fowData[4];
+        float fowFacing[4];
         float sunColor[4];
         float ambientColor[4];
     };
@@ -106,7 +107,7 @@ struct PlanetRenderer {
 
     // Render the planet. Uploads fresh frame constants from the camera.
     // timeOfDay in [0,1), simTime in seconds (for future water animation on planet).
-    void render(const Camera& cam, float aspect, float timeOfDay, float simTime);
+    void render(const World& world, const Renderer& rend, float aspect);
 
     // Release all GPU resources.
     void shutdown();
@@ -121,8 +122,7 @@ private:
     bool createSunQuad();
     bool createRenderStates();
 
-    void uploadFrameConstants(const Camera& cam, float aspect,
-                              float timeOfDay, float simTime);
+    void uploadFrameConstants(const World& world, const Renderer& rend, float aspect);
     void uploadPlanetConstants(float timeOfDay);
 
     void renderPatches();

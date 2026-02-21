@@ -91,20 +91,23 @@ void Renderer::renderCreatures(const World& world) {
             continue;
         }
 
-        // Cull creatures outside the possessed creature's FOV
-        if (hideOutsideFOV && playerID != INVALID_ID && c.id != playerID) {
-            auto it = world.idToIndex.find(playerID);
-            if (it != world.idToIndex.end()) {
-                const Creature& pc = world.creatures[it->second];
-                float dist = (c.pos - pc.pos).len();
-                if (dist > pc.genome.visionRange())
-                    continue;
-                Vec3 toC = (c.pos - pc.pos).normalised();
-                Vec3 facing = {std::sin(pc.yaw), 0.f, std::cos(pc.yaw)};
-                facing = g_planet_surface.projectToTangent(pc.pos, facing).normalised();
-                float fovRad = pc.genome.visionFOV() * 3.14159265f / 180.f;
-                if (toC.dot(facing) < std::cos(fovRad * 0.5f)) {
-                    continue;
+        // Cull creatures outside the possessed creature's FOV or Fog of War
+        if (hideOutsideFOV || showFogOfWar) {
+            if (playerID != INVALID_ID && c.id != playerID) {
+                auto it = world.idToIndex.find(playerID);
+                if (it != world.idToIndex.end()) {
+                    const Creature& pc = world.creatures[it->second];
+                    float dist = (c.pos - pc.pos).len();
+
+                    if (dist > pc.genome.visionRange())
+                        continue;
+                    Vec3 toC = (c.pos - pc.pos).normalised();
+                    Vec3 facing = {std::sin(pc.yaw), 0.f, std::cos(pc.yaw)};
+                    facing = g_planet_surface.projectToTangent(pc.pos, facing).normalised();
+                    float fovRad = pc.genome.visionFOV() * 3.14159265f / 180.f;
+                    if (toC.dot(facing) < std::cos(fovRad * 0.5f)) {
+                        continue;
+                    }
                 }
             }
         }

@@ -25,6 +25,7 @@ cbuffer FrameConstants : register(b0) {
     float4   camPos;
     float4   lightDir;      // FROM sun TOWARD scene
     float4   fowData;
+    float4   fowFacing;
     float4   sunColor;      // rgb=sun tint, w=timeOfDay [0,1]
     float4   ambientColor;  // rgb=sky/ambient, w=simTime
 };
@@ -131,12 +132,26 @@ float4 PSMain(VOut v) : SV_TARGET {
         lit += sunColor.rgb * spec * 0.6f * (0.25f - v.height) / 0.25f;
     }
 
-    // ── Fog of war (identical to world terrain) ───────────────────────────────
+    // ── Fog of war (pure blackness outside FOV) ───────────────────────────────
     if (fowData.w > 0.f) {
-        float d = length(v.wpos.xz - fowData.xz);
-        float f = saturate((d - fowData.w * 0.8f) / (fowData.w * 0.2f + 0.001f));
-        float3 dark = float3(0.01f, 0.01f, 0.04f);
-        lit = lerp(lit, dark, f * f);
+        float3 toPixel = v.wpos - fowData.xyz;
+        float d = length(toPixel);
+        bool inFOV = false;
+
+        if (d <= fowData.w) {
+            if (d < 0.1f) {
+                inFOV = true;
+            } else {
+                float cosA = dot(normalize(toPixel), fowFacing.xyz);
+                if (cosA >= fowFacing.w) {
+                    inFOV = true;
+                }
+            }
+        }
+
+        if (!inFOV) {
+            lit = float3(0.0f, 0.0f, 0.0f);
+        }
     }
 
     return float4(lit, 1.0f);

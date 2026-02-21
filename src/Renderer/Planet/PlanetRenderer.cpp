@@ -12,6 +12,8 @@
 
 #include "imgui.hpp"   // for drawDebugUI
 #include "Renderer/Renderer.hpp"
+#include "World/World.hpp"
+#include "World/World_Planet.hpp"
 
 // ── Shader compilation helper ────────────────────────────────────────────────
 static ID3DBlob* compileShader(const char* src, const char* entry, const char* target) {
@@ -244,9 +246,8 @@ void PlanetRenderer::update(const Camera& cam) {
 // ── uploadFrameConstants ──────────────────────────────────────────────────────
 // Populates b0 with camera, lighting, and fog data.
 // Uses a simple sun model (same as world terrain) so the planet matches lighting.
-void PlanetRenderer::uploadFrameConstants(const Camera& cam, float aspect,
-                                          float timeOfDay, float simTime) {
-    Mat4 view = cam.viewMatrix();
+void PlanetRenderer::uploadFrameConstants(const World& world, const Renderer& rend, float aspect) {
+    Mat4 view = rend.camera.viewMatrix();
 
     // Use a planet-specific projection with a large far plane.
     // The planet centre is ~1840 units below the camera; the far side is ~2840 units.
@@ -254,7 +255,7 @@ void PlanetRenderer::uploadFrameConstants(const Camera& cam, float aspect,
     // near=10 is fine here because the planet surface is never closer than ~800 units.
     float planetFar = cfg.radius * 4.f + 1000.f;   // e.g. 5000 for radius=1000
     Mat4 proj = Mat4::perspectiveRH(
-        cam.fovY * 3.14159265f / 180.f, aspect, 10.f, planetFar);
+        rend.camera.fovY * 3.14159265f / 180.f, aspect, 10.f, planetFar);
 
     Mat4 vp   = (view * proj).transposed();
 
@@ -263,12 +264,12 @@ void PlanetRenderer::uploadFrameConstants(const Camera& cam, float aspect,
     auto* fc = (FrameConstants*)ms.pData;
 
     memcpy(fc->viewProj, vp.m, sizeof(vp.m));
-    fc->camPos[0] = cam.pos.x; fc->camPos[1] = cam.pos.y;
-    fc->camPos[2] = cam.pos.z; fc->camPos[3] = 0.f;
+    fc->camPos[0] = rend.camera.pos.x; fc->camPos[1] = rend.camera.pos.y;
+    fc->camPos[2] = rend.camera.pos.z; fc->camPos[3] = 0.f;
 
     // Sun position / colour (simplified version of the world's computeDayNightLighting)
     const float PI = 3.14159265f;
-    float phase    = timeOfDay * 2.f * PI;
+    float phase    = world.timeOfDay() * 2.f * PI;
     float elev     = -std::cos(phase);
 
     fc->lightDir[0] = std::sin(phase) * 0.6f;
@@ -285,15 +286,29 @@ void PlanetRenderer::uploadFrameConstants(const Camera& cam, float aspect,
     fc->sunColor[0] = 1.f * sunStr;
     fc->sunColor[1] = 0.92f * sunStr;
     fc->sunColor[2] = 0.75f * sunStr;
-    fc->sunColor[3] = timeOfDay;
+    fc->sunColor[3] = world.timeOfDay();
 
     float ambStr = 0.08f + sunStr * 0.25f;
     fc->ambientColor[0] = 0.15f * ambStr + 0.05f;
     fc->ambientColor[1] = 0.22f * ambStr + 0.05f;
     fc->ambientColor[2] = 0.35f * ambStr + 0.08f;
-    fc->ambientColor[3] = simTime;
+    fc->ambientColor[3] = world.simTime;
 
-    fc->fowData[3] = 0.f;  // disable fog of war on planet (not meaningful)
+    if (rend.showFogOfWar && rend.playerID != INVALID_ID) {
+        auto it = world.idToIndex.find(rend.playerID);
+        if (it != world.idToIndex.end()) {
+            const Creature& pc = world.creatures[it->second];
+            fc->fowData[0] = pc.pos.x; fc->fowData[1] = pc.pos.y;
+            fc->fowData[2] = pc.pos.z; fc->fowData[3] = pc.genome.visionRange();
+
+            Vec3 facing = {std::sin(pc.yaw), 0.f, std::cos(pc.yaw)};
+            facing = g_planet_surface.projectToTangent(pc.pos, facing).normalised();
+            fc->fowFacing[0] = facing.x;
+            fc->fowFacing[1] = facing.y;
+            fc->fowFacing[2] = facing.z;
+            fc->fowFacing[3] = std::cos(pc.genome.visionFOV() * 3.14159265f / 180.f * 0.5f);
+        } else { fc->fowData[3] = 0.f; }
+    } else { fc->fowData[3] = 0.f; }
 
     ctx->Unmap(cbFrame, 0);
 
@@ -439,13 +454,12 @@ void PlanetRenderer::renderSun() {
 }
 
 // ── render ────────────────────────────────────────────────────────────────────
-void PlanetRenderer::render(const Camera& cam, float aspect,
-                            float timeOfDay, float simTime) {
-    uploadFrameConstants(cam, aspect, timeOfDay, simTime);
-    uploadPlanetConstants(timeOfDay);
+void PlanetRenderer::render(const World& world, const Renderer& rend, float aspect) {
+    uploadFrameConstants(world, rend, aspect);
+    uploadPlanetConstants(world.timeOfDay());
 
     renderPatches();       // opaque terrain
-    renderAtmosphere(cam); // transparent atmosphere shell
+    renderAtmosphere(rend.camera); // transparent atmosphere shell
     renderSun();           // additive sun disc (always last so glow is on top)
 }
 

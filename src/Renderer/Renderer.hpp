@@ -142,6 +142,7 @@ struct Renderer {
         float camPos[4];        // 16 bytes – camera world position (w unused)
         float lightDir[4];      // 16 bytes – sun direction (FROM sun TOWARD scene, w unused)
         float fowData[4];       // 16 bytes – fog of war: xyz=player pos, w=radius (0=off)
+        float fowFacing[4];     // 16 bytes - fog of war: xyz=facing dir, w=cos(FOV/2)
         float sunColor[4];      // 16 bytes – rgb=sun light tint, w=timeOfDay [0,1]
         float ambientColor[4];  // 16 bytes – rgb=sky/ambient light, w=simTime (seconds)
     };

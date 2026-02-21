@@ -4,6 +4,7 @@
 #include <algorithm>
 
 #include "World/World.hpp"
+#include "World/World_Planet.hpp"
 
 // ── Day/night lighting helpers ─────────────────────────────────────────────────
 // Smooth step in [0,1]: 0 when x<=lo, 1 when x>=hi, smooth cubic between.
@@ -132,7 +133,14 @@ void Renderer::updateFrameConstants(const World& world, float aspect) {
         if (it != world.idToIndex.end()) {
             const Creature& pc = world.creatures[it->second];
             fc->fowData[0] = pc.pos.x; fc->fowData[1] = pc.pos.y;
-            fc->fowData[2] = pc.pos.z; fc->fowData[3] = fogRadius;
+            fc->fowData[2] = pc.pos.z; fc->fowData[3] = pc.genome.visionRange();
+
+            Vec3 facing = {std::sin(pc.yaw), 0.f, std::cos(pc.yaw)};
+            facing = g_planet_surface.projectToTangent(pc.pos, facing).normalised();
+            fc->fowFacing[0] = facing.x;
+            fc->fowFacing[1] = facing.y;
+            fc->fowFacing[2] = facing.z;
+            fc->fowFacing[3] = std::cos(pc.genome.visionFOV() * 3.14159265f / 180.f * 0.5f);
         } else { fc->fowData[3] = 0.f; }
     } else { fc->fowData[3] = 0.f; }
 

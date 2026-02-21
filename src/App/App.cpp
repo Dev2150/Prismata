@@ -272,8 +272,7 @@ int RunApplication()
 
         // ── 3-D render passes ──────────────────────────────────────────────────
         // Planet terrain + atmosphere (PlanetRenderer, uses its own far-Z)
-        g_planet.render(g_renderer.camera, aspect,
-                        g_world.timeOfDay(), g_world.simTime);
+        g_planet.render(g_world, g_renderer, aspect);
 
         // Clear depth so creatures and FOV cone draw on top of the planet
         if (g_renderer.depthDSV)

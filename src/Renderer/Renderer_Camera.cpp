@@ -182,25 +182,27 @@ void Renderer::tickCamera(float dt, const World& world) {
             if (sinA > 1e-6f) {
                 axis = axis * (1.f / sinA);  // normalise
 
-                // Project axis onto the current surface normal to get the
-                // yaw-equivalent rotation component. This tells us how much the
-                // "north" direction has rotated as seen from the local frame,
-                // which is exactly what we need to add to camera.yaw.
-                //
-                // The signed angle of rotation projected onto the normal axis:
-                //   yaw_delta = atan2(sinA * dot(axis, normal), cosA)
-                // But since sinA is small per-frame, we can use the small-angle
-                // approximation: yaw_delta ≈ sinA * dot(axis, normal_before)
-                float yawDelta = sinA * axis.dot(camNormalBefore);
-                camera.yaw += yawDelta;
+                Float3 fwd3 = camera.forward();
+                Vec3 fwd = {fwd3.x, fwd3.y, fwd3.z};
+
+                // Rodrigues' rotation formula: v_rot = v*cos(θ) + (axis×v)*sin(θ) + axis*(axis·v)*(1-cos(θ))
+                Vec3 cross_axis_fwd = {
+                    axis.y * fwd.z - axis.z * fwd.y,
+                    axis.z * fwd.x - axis.x * fwd.z,
+                    axis.x * fwd.y - axis.y * fwd.x
+                };
+
+                Vec3 fwd_rot = fwd * cosA + cross_axis_fwd * sinA + axis * axis.dot(fwd) * (1.f - cosA);
+                fwd_rot = fwd_rot.normalised();
+
+                // Extract new pitch and yaw from the rotated forward vector
+                camera.pitch = std::asin(std::max(-1.f, std::min(1.f, fwd_rot.y)));
+                camera.yaw   = std::atan2(fwd_rot.x, fwd_rot.z);
 
                 // Keep yaw in [-pi, pi]
                 const float PI = 3.14159265f;
                 while (camera.yaw >  PI) camera.yaw -= 2.f * PI;
                 while (camera.yaw < -PI) camera.yaw += 2.f * PI;
-
-                // Pitch is unchanged: moving along the surface doesn't tilt
-                // the camera up or down relative to the local horizon.
             }
         }
     }

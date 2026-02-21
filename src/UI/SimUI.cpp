@@ -58,7 +58,7 @@ void SimUI::draw(World& world, DataRecorder& rec, Renderer& rend) {
 
     if (showSettings) drawSettingsWindow(world, rend);
 
-    drawTerrainHoverTooltip();
+    drawTerrainHoverTooltip(world);
 
     // Notification overlay drawn last so it sits on top of everything
     drawNotifications();
@@ -72,10 +72,73 @@ void SimUI::draw(World& world, DataRecorder& rec, Renderer& rend) {
 // ── Terrain hover ─────────────────────────────────────────────────────────────
 void SimUI::updateTerrainHover(const Renderer& rend, const World& world) {
     terrainHitValid = false;
+    hoveredCreatureID = INVALID_ID;
+    hoveredPlantIdx = -1;
+
     // Only raycast when mouse is over the 3D viewport (not over any ImGui window)
     if (ImGui::GetIO().WantCaptureMouse) return;
 
     ImVec2 mp = ImGui::GetIO().MousePos;
+
+    // Check entities (creatures and plants)
+    float ndcX =  (mp.x / windowW) * 2.f - 1.f;
+    float ndcY = -(mp.y / windowH) * 2.f + 1.f;
+    Mat4 vp    = rend.camera.viewMatrix() * rend.camera.projMatrix((float)windowW / windowH);
+    Mat4 vpInv = vp.inversed();
+
+    auto unproject = [&](float z) -> Vec4 {
+        Vec4 clip = {ndcX, ndcY, z, 1.f};
+        Vec4 w = vpInv.transform(clip);
+        float iw = (std::abs(w.w) > 1e-7f) ? 1.f / w.w : 0.f;
+        return {w.x*iw, w.y*iw, w.z*iw, 1.f};
+    };
+
+    Vec4 near4 = unproject(0.f);
+    Vec4 far4  = unproject(1.f);
+    float dx = far4.x - near4.x, dy = far4.y - near4.y, dz = far4.z - near4.z;
+    float dl = std::sqrt(dx*dx + dy*dy + dz*dz);
+
+    if (dl > 1e-6f) {
+        dx /= dl; dy /= dl; dz /= dl;
+        float bestDist = 3.f; // 3m selection radius
+
+        // Check creatures
+        for (const auto& c : world.creatures) {
+            if (!c.alive) continue;
+            float ocx = c.pos.x - near4.x, ocy = c.pos.y - near4.y, ocz = c.pos.z - near4.z;
+            float t = ocx*dx + ocy*dy + ocz*dz;
+            if (t < 0.f) continue;
+            float cx2 = near4.x + dx*t - c.pos.x;
+            float cy2 = near4.y + dy*t - c.pos.y;
+            float cz2 = near4.z + dz*t - c.pos.z;
+            float d = std::sqrt(cx2*cx2 + cy2*cy2 + cz2*cz2);
+            if (d < bestDist) {
+                bestDist = d;
+                hoveredCreatureID = c.id;
+                hoveredPlantIdx = -1;
+            }
+        }
+
+        // Check plants
+        for (int i = 0; i < (int)world.plants.size(); i++) {
+            const auto& p = world.plants[i];
+            if (!p.alive) continue;
+            float ocx = p.pos.x - near4.x, ocy = p.pos.y - near4.y, ocz = p.pos.z - near4.z;
+            float t = ocx*dx + ocy*dy + ocz*dz;
+            if (t < 0.f) continue;
+            float cx2 = near4.x + dx*t - p.pos.x;
+            float cy2 = near4.y + dy*t - p.pos.y;
+            float cz2 = near4.z + dz*t - p.pos.z;
+            float d = std::sqrt(cx2*cx2 + cy2*cy2 + cz2*cz2);
+            if (d < bestDist) {
+                bestDist = d;
+                hoveredPlantIdx = i;
+                hoveredCreatureID = INVALID_ID;
+            }
+        }
+    }
+
+    // Check terrain
     Vec3 pos; uint8_t mat;
     if (rend.screenToTerrain(mp.x, mp.y, (float)windowW, (float)windowH, world, pos, mat)) {
         terrainHitValid = true;
@@ -84,13 +147,13 @@ void SimUI::updateTerrainHover(const Renderer& rend, const World& world) {
     }
 }
 
-void SimUI::drawTerrainHoverTooltip() {
-    if (!terrainHitValid) return;
+void SimUI::drawTerrainHoverTooltip(const World& world) {
+    if (!terrainHitValid && hoveredCreatureID == INVALID_ID && hoveredPlantIdx == -1) return;
 
     ImGui::SetNextWindowPos(
         ImVec2(ImGui::GetIO().MousePos.x + 16.f, ImGui::GetIO().MousePos.y + 8.f),
         ImGuiCond_Always);
-    ImGui::SetNextWindowBgAlpha(0.78f);
+    ImGui::SetNextWindowBgAlpha(0.85f);
     ImGui::SetNextWindowSize(ImVec2(0, 0));   // auto-size
     ImGui::Begin("##TerrainHover",
                  nullptr,
@@ -100,6 +163,29 @@ void SimUI::drawTerrainHoverTooltip() {
                  ImGuiWindowFlags_NoMove        |
                  ImGuiWindowFlags_AlwaysAutoResize);
 
+    if (hoveredCreatureID != INVALID_ID) {
+        auto it = world.idToIndex.find(hoveredCreatureID);
+        if (it != world.idToIndex.end()) {
+            const Creature& c = world.creatures[it->second];
+            const SpeciesInfo* sp = world.getSpecies(c.speciesID);
+            ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.2f, 1.0f), "Creature #%u", c.id);
+            ImGui::Text("Species: %s", sp ? sp->name.c_str() : "?");
+            ImGui::Text("Diet: %s", c.isHerbivore() ? "Herbivore" : c.isCarnivore() ? "Carnivore" : "Omnivore");
+            ImGui::Text("Energy: %.1f / %.1f", c.energy, c.maxEnergy);
+            ImGui::Text("Age: %.1f / %.1f", c.age, c.lifespan);
+
+            const char* bhNames[] = {"Idle","SeekFood","SeekWater","Sleep",
+                                     "SeekMate","Flee","Hunt","Mating"};
+            ImGui::Text("Action: %s", bhNames[(int)c.behavior]);
+        } else {
+            ImGui::Text("Creature died.");
+        }
+    } else if (hoveredPlantIdx != -1) {
+        const Plant& p = world.plants[hoveredPlantIdx];
+        const char* pType = p.type == 0 ? "Grass" : p.type == 1 ? "Bush" : "Tree";
+        ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "Plant: %s", pType);
+        ImGui::Text("Nutrition: %.1f", p.nutrition);
+    } else if (terrainHitValid) {
     // Material colour swatch + name
     static const ImVec4 matColors[] = {
         {0.25f,0.55f,0.15f,1}, // Grass – green
@@ -109,11 +195,11 @@ void SimUI::drawTerrainHoverTooltip() {
         {0.90f,0.95f,1.00f,1}, // Snow  – white
     };
     uint8_t m = std::min(terrainHitMat, (uint8_t)4);
-    ImGui::TextColored(matColors[m], "  %s", World::materialName(terrainHitMat));
-
+        ImGui::TextColored(matColors[m], "Terrain: %s", World::materialName(terrainHitMat));
     ImGui::Text("Height : %.2f m", terrainHitPos.y);
     ImGui::Text("Pos    : (%.1f, %.1f, %.1f)",
                 terrainHitPos.x, terrainHitPos.y, terrainHitPos.z);
+    }
 
     ImGui::End();
 }
@@ -592,6 +678,8 @@ void SimUI::drawSettingsWindow(World& world, Renderer& rend) {
     ImGui::TextDisabled("Space    – Pause / Resume");
     ImGui::TextDisabled("- / +    – Decrease / Increase sim speed (1.25×)");
     ImGui::TextDisabled("P        – Possess random creature");
+    ImGui::TextDisabled("T        – Toggle possession of selected");
+    ImGui::TextDisabled("J        – Toggle hide outside FOV");
     ImGui::TextDisabled("RMB drag – Rotate camera");
     ImGui::TextDisabled("W/S/A/D  – Move camera (fwd/back/left/right)");
     ImGui::TextDisabled("F/Q      – Move camera up/down");

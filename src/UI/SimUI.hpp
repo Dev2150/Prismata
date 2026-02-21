@@ -47,6 +47,8 @@ struct SimUI {
     bool    terrainHitValid  = false;   // did the hover ray hit terrain this frame?
     Vec3    terrainHitPos    = {};      // world-space hit position
     uint8_t terrainHitMat    = 0;       // material at hit position
+    EntityID hoveredCreatureID = INVALID_ID;
+    int      hoveredPlantIdx   = -1;
 
     // Window dimensions passed in from main.cpp each frame
     int  windowW = 1280, windowH = 800;
@@ -88,7 +90,7 @@ private:
     void drawGeneCharts(const World& world, const DataRecorder& rec);
     void drawPlayerPanel(World& world, Renderer& rend);
     void drawSettingsWindow(World& world, Renderer& rend);
-    void drawTerrainHoverTooltip();
+    void drawTerrainHoverTooltip(const World& world);
 
     // Update terrain hover data using the renderer's ray cast
     void updateTerrainHover(const Renderer& rend, const World& world);

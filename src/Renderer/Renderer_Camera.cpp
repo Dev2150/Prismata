@@ -81,26 +81,25 @@ void Renderer::tickCamera(float dt, const World& world) {
         hasPossessOffset = false;
 
         // ── Spherical free-cam ────────────────────────────────────────────────
-        // Build a local tangent frame at the camera's current position on the sphere.
-        // "Up" is the outward planet normal at the camera position.
-        Vec3 camNormal = g_planet_surface.normalAt(
+        // Capture the planet-surface normal BEFORE moving so we can correct
+        // the camera orientation for the sphere curvature after moving.
+        Vec3 camNormalBefore = g_planet_surface.normalAt(
             Vec3{camera.pos.x, camera.pos.y, camera.pos.z});
 
         // Camera's "look" forward projected onto the tangent plane
         Float3 fwd3  = camera.forward();
         Vec3   fwdV  = { fwd3.x, fwd3.y, fwd3.z };
 
-        // Tangential forward = remove the normal component
-        float fdotn  = fwdV.dot(camNormal);
-        Vec3 tangFwd = Vec3{ fwdV.x - camNormal.x * fdotn,
-                             fwdV.y - camNormal.y * fdotn,
-                             fwdV.z - camNormal.z * fdotn }.normalised();
+        float fdotn  = fwdV.dot(camNormalBefore);
+        Vec3 tangFwd = Vec3{ fwdV.x - camNormalBefore.x * fdotn,
+                             fwdV.y - camNormalBefore.y * fdotn,
+                             fwdV.z - camNormalBefore.z * fdotn }.normalised();
 
         // Tangential right = tangFwd × normal (points "east")
         Vec3 tangRight = Vec3{
-            tangFwd.y * camNormal.z - tangFwd.z * camNormal.y,
-            tangFwd.z * camNormal.x - tangFwd.x * camNormal.z,
-            tangFwd.x * camNormal.y - tangFwd.y * camNormal.x
+            tangFwd.y * camNormalBefore.z - tangFwd.z * camNormalBefore.y,
+            tangFwd.z * camNormalBefore.x - tangFwd.x * camNormalBefore.z,
+            tangFwd.x * camNormalBefore.y - tangFwd.y * camNormalBefore.x
         }.normalised();
 
         float spd = camera.translation_speed * dt;
@@ -117,15 +116,63 @@ void Renderer::tickCamera(float dt, const World& world) {
         float strafeInput= moveKeys[3] - moveKeys[2];   // A - S
         float radialInput= moveKeys[4] - moveKeys[5];   // F - Q
 
+        bool moving = (std::abs(fwdInput) > 1e-4f) ||
+                      (std::abs(strafeInput) > 1e-4f);
+
         camera.pos.x += (tangFwd.x   * fwdInput   +
                          tangRight.x * strafeInput +
-                         camNormal.x * radialInput) * spd;
+                         camNormalBefore.x * radialInput) * spd;
         camera.pos.y += (tangFwd.y   * fwdInput   +
                          tangRight.y * strafeInput +
-                         camNormal.y * radialInput) * spd;
+                         camNormalBefore.y * radialInput) * spd;
         camera.pos.z += (tangFwd.z   * fwdInput   +
                          tangRight.z * strafeInput +
-                         camNormal.z * radialInput) * spd;
+                         camNormalBefore.z * radialInput) * spd;
+
+        // ── Auto-correct orientation for sphere curvature ─────────────────────
+        // When the camera translates along the sphere surface, the local "up"
+        // direction (planet normal) rotates. We apply the same rotation to the
+        // camera's forward vector so the view direction stays constant relative
+        // to the local tangent frame (i.e., the horizon stays at the same height
+        // in the viewport without the player needing to compensate manually).
+        //
+        // We only correct for tangential movement (fwd/strafe), not radial
+        // movement (F/Q), which is purely altitude change and needs no correction.
+        if (moving) {
+            Vec3 camNormalAfter = g_planet_surface.normalAt(
+                Vec3{camera.pos.x, camera.pos.y, camera.pos.z});
+
+            // Rotation axis = cross(N_before, N_after)
+            Vec3 axis = {
+                camNormalBefore.y * camNormalAfter.z - camNormalBefore.z * camNormalAfter.y,
+                camNormalBefore.z * camNormalAfter.x - camNormalBefore.x * camNormalAfter.z,
+                camNormalBefore.x * camNormalAfter.y - camNormalBefore.y * camNormalAfter.x
+            };
+            float sinA = axis.len();
+            float cosA = camNormalBefore.dot(camNormalAfter);
+
+            if (sinA > 1e-6f) {
+                axis = axis * (1.f / sinA);  // normalise
+
+                // Rodrigues' rotation formula applied to the camera forward vector
+                Vec3 fwd = { fwd3.x, fwd3.y, fwd3.z };
+                float dot = fwd.dot(axis);
+                Vec3 cross3 = {
+                    axis.y * fwd.z - axis.z * fwd.y,
+                    axis.z * fwd.x - axis.x * fwd.z,
+                    axis.x * fwd.y - axis.y * fwd.x
+                };
+                Vec3 rotFwd = {
+                    fwd.x * cosA + cross3.x * sinA + axis.x * dot * (1.f - cosA),
+                    fwd.y * cosA + cross3.y * sinA + axis.y * dot * (1.f - cosA),
+                    fwd.z * cosA + cross3.z * sinA + axis.z * dot * (1.f - cosA),
+                };
+
+                // Extract new absolute yaw and pitch from the rotated forward
+                camera.pitch = std::asin(std::max(-1.f, std::min(1.f, rotFwd.y)));
+                camera.yaw   = std::atan2(rotFwd.x, rotFwd.z);
+            }
+        }
     }
 }
 

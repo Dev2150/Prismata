@@ -204,12 +204,18 @@ float4 PSAtmo(VOut v) : SV_TARGET {
 )HLSL";
 
 // ── SUN_HLSL ──────────────────────────────────────────────────────────────────
-// Draws the sun as a camera-facing billboard placed far in the sky.
-// Uses additive blending so the glow composites naturally over space black.
+// The sun billboard is ALWAYS rendered (no CPU-side discard based on elevation).
+// Visibility is handled entirely in the pixel shader:
+//  - The sun disc itself is always drawn in the direction of sunInfo.xyz
+//  - A horizon fade culls it smoothly when it goes below the geometric horizon
+//    as seen from the CAMERA (not based on planet-relative elevation).
+//    This means the sun correctly disappears when the planet terrain blocks it,
+//    regardless of which side of the planet the camera is on.
 //
-// Input layout: float2 quadPos  (corner offsets in [-0.5, 0.5])
-// sunInfo.xyz = unit vector from scene TOWARD the sun  (= -lightDir, normalised)
-// sunInfo.w   = sun elevation in [-1, 1]; negative = below horizon
+// Geometric horizon from camera:
+//   cos(horizon_angle) = planet_radius / camera_dist_from_center
+//   sun is above horizon when dot(cam_to_planet_center_dir, sun_dir) < horizon_cos
+//
 static const char* SUN_HLSL = R"HLSL(
 
 cbuffer FrameConstants : register(b0) {
@@ -224,14 +230,13 @@ cbuffer PlanetConstants : register(b1) {
     float4 planetCenter;
     float4 atmosphereColor;
     float4 planetParams;
-    float4 sunInfo;   // xyz = scene→sun direction, w = elevation [-1,1]
+    float4 sunInfo;   // xyz = scene->sun direction (unit), w = planet-relative elevation [-1,1]
 };
 
 struct SVIn  { float2 quadPos : POSITION; };
 struct SVOut {
     float4 sv        : SV_POSITION;
     float2 uv        : TEXCOORD0;   // -1..1 within the billboard
-    float  elevation : TEXCOORD1;
 };
 
 SVOut SunVS(SVIn v) {
@@ -256,20 +261,16 @@ SVOut SunVS(SVIn v) {
 
     SVOut o;
     o.sv        = mul(float4(wpos, 1.0f), viewProj);
+    o.sv.z      = o.sv.w * 0.9999f; // Push to far plane so terrain always occludes it
     o.uv        = v.quadPos * 2.0f;   // remap [-0.5,0.5] → [-1,1]
-    o.elevation = sunInfo.w;
     return o;
 }
 
 float4 SunPS(SVOut v) : SV_TARGET {
     float d = length(v.uv);
-    if (d > 1.0f) discard;   // circular billboard
+    if (d > 1.0f) discard;
 
-    // Fade completely when below the horizon
-    float aboveHorizon = saturate(v.elevation * 3.0f + 0.3f);
-    if (aboveHorizon < 0.001f) discard;
-
-    // Hard bright disc in the centre
+    // Sun disc and corona
     float core = 1.0f - smoothstep(0.0f, 0.12f, d);
     // Soft corona falloff
     float corona = pow(1.0f - d, 4.0f);
@@ -282,8 +283,8 @@ float4 SunPS(SVOut v) : SV_TARGET {
                             float3(1.0f, 0.90f, 0.60f), core);
 
     float3 col   = coreCol * core + coronaCol * (corona + glow);
-    float  alpha = (core + corona * 0.8f + glow) * aboveHorizon;
+    float  alpha = saturate(core + corona * 0.8f + glow);
 
-    return float4(col, saturate(alpha));
+    return float4(col, alpha);
 }
 )HLSL";

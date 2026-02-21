@@ -419,7 +419,7 @@ void PlanetRenderer::renderSun() {
     if (!showSun || !sunQuadVB || wireframe) return;
 
     ctx->RSSetState(rsSolidNoCull);
-    ctx->OMSetDepthStencilState(dssNoDepth, 0);      // always on top of depth
+    ctx->OMSetDepthStencilState(dssNoWrite, 0);       // test against terrain, don't write
     float bf[4] = {};
     ctx->OMSetBlendState(bsAdditive, bf, 0xFFFFFFFF); // additive for the glow
 

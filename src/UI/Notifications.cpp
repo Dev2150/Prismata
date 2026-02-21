@@ -42,15 +42,6 @@ static ImVec4 severityAccent(NotifSeverity s) {
     return {1.f, 1.f, 1.f, 1.f};
 }
 
-static const char* severityIcon(NotifSeverity s) {
-    switch (s) {
-        case NotifSeverity::Info:     return "ℹ";
-        case NotifSeverity::Warning:  return "⚠";
-        case NotifSeverity::Critical: return "🔴";
-    }
-    return "•";
-}
-
 // ── pushNotification ──────────────────────────────────────────────────────────
 void SimUI::pushNotification(const std::string& title,
                              const std::string& message,
@@ -187,11 +178,6 @@ void SimUI::drawNotifications() {
 
         // ── Inner content ─────────────────────────────────────────────────────
         ImGui::SetCursorScreenPos({cardPos.x + 10.f, cardPos.y + 8.f});
-
-        // Icon + title
-        ImGui::PushStyleColor(ImGuiCol_Text, accent);
-        ImGui::Text("%s  %s", severityIcon(n.severity), n.title.c_str());
-        ImGui::PopStyleColor();
 
         // Message body (wrapped)
         ImGui::SetCursorScreenPos({cardPos.x + 14.f, cardPos.y + 28.f});

@@ -54,6 +54,7 @@ struct Camera {
     float  pitch  = -0.6f;  // radians (negative = looking down)
     float  fovY   = 60.f;   // degrees
     float  translation_speed = 200.f;
+    float  zoom_speed_coefficient = 0.1f;
     float  follow_dist    = 16.f;   // How far behind the creature
     float  follow_height  = 10.f;   // How high above the creature
     float  follow_speed   = 5.f;   // How quickly the camera snaps to position

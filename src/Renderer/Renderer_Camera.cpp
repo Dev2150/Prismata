@@ -104,7 +104,7 @@ void Renderer::tickCamera(float dt, const World& world) {
         // ── Mouse wheel zoom (radial movement) ───────────────────────────────
         if (std::abs(scrollDelta) > 1e-4f) {
             Vec3 radialDir = camNormal;  // outward from planet centre
-            float zoomSpd  = camera.translation_speed * 0.3f;
+            float zoomSpd  = camera.translation_speed * camera.zoom_speed_coefficient;
             camera.pos.x  += radialDir.x * scrollDelta * zoomSpd;
             camera.pos.y  += radialDir.y * scrollDelta * zoomSpd;
             camera.pos.z  += radialDir.z * scrollDelta * zoomSpd;

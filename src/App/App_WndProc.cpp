@@ -65,9 +65,17 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             return 0;
         }
 
-            // ── Ray-picking: select a creature by left-clicking on the viewport ───────
-            // Converts the 2D screen click into a 3D world-space ray, then finds the
-            // living creature whose position is closest to that ray (within 3 m).
+        // ── Mouse wheel: zoom in/out (radial movement along planet normal) ──────
+        // WHEEL_DELTA = 120 per notch. It's normalized to notch count (±1 per notch).
+        // Positive = scroll up = move away from planet (zoom out).
+        case WM_MOUSEWHEEL: {
+            if (!ImGui::GetIO().WantCaptureMouse) {
+                float notches = (float)(GET_WHEEL_DELTA_WPARAM(wParam)) / WHEEL_DELTA;
+                g_renderer.onMouseScroll(notches);
+            }
+            return 0;
+        }
+
         case WM_LBUTTONDOWN: {
             if (ImGui::GetIO().WantCaptureMouse) break;  // click was on an ImGui panel
 

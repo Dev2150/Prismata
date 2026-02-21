@@ -33,14 +33,39 @@ void Renderer::tickCamera(float dt, const World& world) {
             hasPossessOffset = true;
         }
 
-        // ── Translate camera to maintain the fixed offset ─────────────────────
-        // Target is simply the creature's current position + the frozen offset.
-        // Smooth approach (exponential lag) avoids jarring teleports if the
-        // creature moves very fast or we just started following it.
+        // ── Orbit-follow: keep the same offset in planet-normal space ─────────
+        // Reproject the stored offset into the creature's current local frame
+        // (normal, east, north) so the camera orbits with the creature as it
+        // moves across the sphere rather than flying off in a straight line.
+
+        // Planet normal at creature position (= "up" on the sphere)
+        Vec3 creatureNormal = g_planet_surface.normalAt(creature.pos);
+
+        // Reconstruct an orthonormal frame (normal, east, north)
+        Vec3 arb = (std::abs(creatureNormal.y) < 0.9f)
+                 ? Vec3{0.f, 1.f, 0.f} : Vec3{1.f, 0.f, 0.f};
+        Vec3 east = Vec3{
+            creatureNormal.y * arb.z - creatureNormal.z * arb.y,
+            creatureNormal.z * arb.x - creatureNormal.x * arb.z,
+            creatureNormal.x * arb.y - creatureNormal.y * arb.x
+        }.normalised();
+        Vec3 north = Vec3{
+            creatureNormal.y * east.z - creatureNormal.z * east.y,
+            creatureNormal.z * east.x - creatureNormal.x * east.z,
+            creatureNormal.x * east.y - creatureNormal.y * east.x
+        }.normalised();
+
+        // Decompose stored offset into the local frame components
+        Vec3 off = { possessOffset.x, possessOffset.y, possessOffset.z };
+        float dNormal = off.dot(creatureNormal);
+        float dEast   = off.dot(east);
+        float dNorth  = off.dot(north);
+
+        // Recompose in the creature's current frame
         Float3 target = {
-            creature.pos.x + possessOffset.x,
-            creature.pos.y + possessOffset.y,
-            creature.pos.z + possessOffset.z,
+            creature.pos.x + creatureNormal.x * dNormal + east.x * dEast + north.x * dNorth,
+            creature.pos.y + creatureNormal.y * dNormal + east.y * dEast + north.y * dNorth,
+            creature.pos.z + creatureNormal.z * dNormal + east.z * dEast + north.z * dNorth,
         };
 
         // Exponential smooth approach: blend = 1 - e^(-speed*dt)
@@ -55,9 +80,29 @@ void Renderer::tickCamera(float dt, const World& world) {
         // Clear offset state so the next possession starts fresh.
         hasPossessOffset = false;
 
-        // ── Planet-surface free cam ────────────────────────────────────────────
-        // WASD/QF move in the camera's local frame. The camera is not clamped to
-        // the planet surface — it can orbit freely (useful for space view).
+        // ── Spherical free-cam ────────────────────────────────────────────────
+        // Build a local tangent frame at the camera's current position on the sphere.
+        // "Up" is the outward planet normal at the camera position.
+        Vec3 camNormal = g_planet_surface.normalAt(
+            Vec3{camera.pos.x, camera.pos.y, camera.pos.z});
+
+        // Camera's "look" forward projected onto the tangent plane
+        Float3 fwd3  = camera.forward();
+        Vec3   fwdV  = { fwd3.x, fwd3.y, fwd3.z };
+
+        // Tangential forward = remove the normal component
+        float fdotn  = fwdV.dot(camNormal);
+        Vec3 tangFwd = Vec3{ fwdV.x - camNormal.x * fdotn,
+                             fwdV.y - camNormal.y * fdotn,
+                             fwdV.z - camNormal.z * fdotn }.normalised();
+
+        // Tangential right = tangFwd × normal (points "east")
+        Vec3 tangRight = Vec3{
+            tangFwd.y * camNormal.z - tangFwd.z * camNormal.y,
+            tangFwd.z * camNormal.x - tangFwd.x * camNormal.z,
+            tangFwd.x * camNormal.y - tangFwd.y * camNormal.x
+        }.normalised();
+
         float spd = camera.translation_speed * dt;
         Float3 f  = camera.forward();
         // Right vector: perpendicular to forward in the XZ plane (no vertical component)
@@ -65,10 +110,22 @@ void Renderer::tickCamera(float dt, const World& world) {
         float  rl = std::sqrt(r.x*r.x + r.z*r.z);
         if (rl > 1e-6f) { r.x/=rl; r.z/=rl; }
 
-        // moveKeys[]: [0]=W(fwd) [1]=R(back) [2]=S(left) [3]=A(right) [4]=F(up) [5]=Q(down)
-        camera.pos.x += (f.x*(moveKeys[0]-moveKeys[1]) + r.x*(moveKeys[3]-moveKeys[2])) * spd;
-        camera.pos.y += (moveKeys[4] - moveKeys[5]) * spd;
-        camera.pos.z += (f.z*(moveKeys[0]-moveKeys[1]) + r.z*(moveKeys[3]-moveKeys[2])) * spd;
+        // W/R  = forward/backward along the sphere surface (tangential)
+        // A/S  = strafe left/right                         (tangential)
+        // F/Q  = move away from / toward the planet centre (radial)
+        float fwdInput   = moveKeys[0] - moveKeys[1];   // W - R
+        float strafeInput= moveKeys[3] - moveKeys[2];   // A - S
+        float radialInput= moveKeys[4] - moveKeys[5];   // F - Q
+
+        camera.pos.x += (tangFwd.x   * fwdInput   +
+                         tangRight.x * strafeInput +
+                         camNormal.x * radialInput) * spd;
+        camera.pos.y += (tangFwd.y   * fwdInput   +
+                         tangRight.y * strafeInput +
+                         camNormal.y * radialInput) * spd;
+        camera.pos.z += (tangFwd.z   * fwdInput   +
+                         tangRight.z * strafeInput +
+                         camNormal.z * radialInput) * spd;
     }
 }
 
@@ -88,12 +145,12 @@ void Renderer::onMouseMove(int dx, int dy, bool rightDown) {
 void Renderer::onKey(int vk, bool down) {
     float v = down ? 1.f : 0.f;
     switch (vk) {
-        case 'W': moveKeys[0]=v; break;  // forward
-        case 'R': moveKeys[1]=v; break;  // backward
-        case 'S': moveKeys[2]=v; break;  // strafe left
-        case 'A': moveKeys[3]=v; break;  // strafe right
-        case 'F': moveKeys[4]=v; break;  // up
-        case 'Q': moveKeys[5]=v; break;  // down
+        case 'W': moveKeys[0] = v; break;  // forward  (tangential)
+        case 'R': moveKeys[1] = v; break;  // backward (tangential)
+        case 'A': moveKeys[2] = v; break;  // strafe right
+        case 'S': moveKeys[3] = v; break;  // strafe left
+        case 'F': moveKeys[4] = v; break;  // radial out (away from planet)
+        case 'Q': moveKeys[5] = v; break;  // radial in  (toward planet)
     }
 }
 

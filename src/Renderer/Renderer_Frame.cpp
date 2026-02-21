@@ -6,7 +6,6 @@
 #include "World/World.hpp"
 
 // ── Renderer_Frame.cpp ────────────────────────────────────────────────────────
-// Covers: updateFrameConstants, render.
 // This is the main per-frame orchestrator — it calls the sub-renderers in order.
 
 // ── Day/night lighting helpers ─────────────────────────────────────────────────
@@ -25,13 +24,7 @@ static void lerpColor(const float a[3], const float b[3], float t, float out[3])
 }
 
 // ── computeDayNightLighting ────────────────────────────────────────────────────
-// Given timeOfDay in [0,1) (0=midnight, 0.25=dawn, 0.5=noon, 0.75=dusk),
-// fills lightDir, sunColor (rgb + timeOfDay in w), and ambientColor (rgb).
-//
-// Sun arc:
-//   elevation = -cos(t × 2π)   →  -1 at midnight, +1 at noon
-//   lightDir.y = -elevation     →  negative when sun is above (points downward from sun)
-//   lightDir.x = sin(t × 2π)   →  east→west sweep across the sky
+// Given timeOfDay in [0,1), fills lightDir, sunColor, and ambientColor.
 static void computeDayNightLighting(float timeOfDay,
                                     float lightDir[4],
                                     float sunColor[4],
@@ -157,25 +150,13 @@ void Renderer::updateFrameConstants(const World& world, float aspect) {
 // ── render ────────────────────────────────────────────────────────────────────
 // Planet mode: skip terrain + water; only draw FOV cone + creature billboards.
 void Renderer::render(const World& world, float aspectRatio) {
-    // Flat chunk meshes are never built in planet mode (dirty=false, no geometry).
-    // The loop below is effectively a no-op but kept so the code compiles
-    // unchanged if someone re-enables flat terrain later.
-    for (int cz = 0; cz < world.worldCZ; cz++) {
-        for (int cx2 = 0; cx2 < world.worldCX; cx2++) {
-            int i2 = cz * world.worldCX + cx2;
-            const Chunk& ch = world.chunks[i2];
-            if (ch.dirty && (i2 < (int)chunkMeshes.size()) && !chunkMeshes[i2].built)
-                buildChunkMesh(world, cx2, cz);
-            const_cast<Chunk&>(ch).dirty = false;
-        }
-    }
-
     updateFrameConstants(world, aspectRatio);
 
     // Draw order matters: opaque first, then transparent overlays on top
     ctx->RSSetState(rsSolid);
     ctx->OMSetDepthStencilState(dssDepth, 0);
-    if (showFOVCone && !wireframe)
+
+    if (showFOVCone)
         renderFOVCone(world);
     // creature billboards
     renderCreatures(world);

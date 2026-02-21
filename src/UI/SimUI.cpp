@@ -10,6 +10,7 @@
 #include <cmath>
 
 #include "App/App_Globals.hpp"
+#include "World/World_Planet.hpp"
 
 // ── Helper: format simTime as "Day D  HH:MM" ─────────────────────────────────
 // One in-game day = World::DAY_DURATION simulated seconds.
@@ -37,22 +38,8 @@ static const char* timeIcon(float timeOfDay) {
     return "🌇";                                             // dusk
 }
 
-
-// Helper: hue → ImVec4 colour
-static ImVec4 hueColor(float hue, float alpha = 1.f) {
-    float h = hue / 60.f;
-    int   hi = (int)h;
-    float f  = h - hi;
-    float p  = 0.3f, q = 1.f - 0.7f * f, tv = 0.3f + 0.7f * f;
-    float rgb[6][3] = {{1,tv,p},{q,1,p},{p,1,tv},{p,q,1},{tv,p,1},{1,p,q}};
-    return {rgb[hi%6][0], rgb[hi%6][1], rgb[hi%6][2], alpha};
-}
-
 // ── Top-level draw ────────────────────────────────────────────────────────────
 void SimUI::draw(World& world, DataRecorder& rec, Renderer& rend) {
-    // Sync water level for tooltip underwater detection
-    terrainWaterLevel = rend.waterLevel;
-
     updateTerrainHover(rend, world);
 
     drawMainMenuBar(world, rec, rend);
@@ -116,23 +103,9 @@ void SimUI::drawTerrainHoverTooltip() {
     uint8_t m = std::min(terrainHitMat, (uint8_t)4);
     ImGui::TextColored(matColors[m], "  %s", World::materialName(terrainHitMat));
 
-    // ── Underwater indicator ──────────────────────────────────────────────────
-    // Show a teal "underwater" badge when the terrain surface is below the
-    // renderer's water plane, but hasn't been classified as a water tile itself.
-    bool isUnderwater = (terrainHitPos.y < terrainWaterLevel) && (terrainHitMat != 3);
-    if (isUnderwater) {
-        ImGui::SameLine();
-        ImGui::TextColored({0.2f, 0.7f, 1.0f, 1.f}, "🌊 Underwater");
-    } else if (terrainHitMat == 3) {
-        ImGui::SameLine();
-        ImGui::TextColored({0.2f, 0.6f, 1.0f, 1.f}, "🌊 Water");
-    }
-
     ImGui::Text("Height : %.2f m", terrainHitPos.y);
-    if (isUnderwater)
-        ImGui::TextColored({0.3f, 0.8f, 1.f, 0.9f},
-            "Depth  : %.2f m", terrainWaterLevel - terrainHitPos.y);
-    ImGui::Text("Pos    : (%.1f, %.1f)", terrainHitPos.x, terrainHitPos.z);
+    ImGui::Text("Pos    : (%.1f, %.1f, %.1f)",
+                terrainHitPos.x, terrainHitPos.y, terrainHitPos.z);
 
     ImGui::End();
 }
@@ -161,7 +134,6 @@ void SimUI::drawMainMenuBar(World& world, DataRecorder& rec, Renderer& rend) {
 
     if (ImGui::BeginMenu("View")) {
         ImGui::Checkbox("Wireframe",   &rend.wireframe);
-        ImGui::Checkbox("Water Plane", &rend.showWater);
         ImGui::Checkbox("FOV Cone",    &rend.showFOVCone);
         ImGui::Separator();
         ImGui::Checkbox("ImGui Demo",  &showDemoWindow);
@@ -224,15 +196,15 @@ void SimUI::drawSimControls(World& world, Renderer& rend) {
         // Colour shifts from dark blue (night) → orange (dawn) → white (day) → orange (dusk)
         float t = world.timeOfDay();
         float r, g, b;
-        if      (t < 0.25f) { float f=t/0.25f;      r=f*1.f;      g=f*0.45f;  b=0.12f+f*0.5f; } // dawn
+        if      (t < 0.25f) { float f=t/0.25f;      r=f;      g=f*0.45f;  b=0.12f+f*0.5f; } // dawn
         else if (t < 0.50f) { float f=(t-0.25f)/0.25f; r=1.f;     g=0.45f+f*0.5f; b=0.62f+f*0.18f; } // morning
-        else if (t < 0.75f) { float f=(t-0.50f)/0.25f; r=1.f-f*0.f; g=0.95f;  b=0.80f-f*0.68f; } // afternoon
+        else if (t < 0.75f) { float f=(t-0.50f)/0.25f; r=1.f; g=0.95f;  b=0.80f-f*0.68f; } // afternoon
         else                 { float f=(t-0.75f)/0.25f; r=1.f-f;   g=0.95f-f*0.9f; b=0.12f-f*0.09f; } // dusk→night
 
         ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImVec4(r, g, b, 1.f));
         char overlay[32];
-        int h=(int)(t*24), m=(int)(std::fmod(t*24,1.f)*60);
-        std::snprintf(overlay, sizeof(overlay), "%02d:%02d", h, m);
+        int h=(int)(t*24), mn=(int)(std::fmod(t*24,1.f)*60);
+        std::snprintf(overlay, sizeof(overlay), "%02d:%02d", h, mn);
         ImGui::ProgressBar(progress, ImVec2(-1, 8), overlay);
         ImGui::PopStyleColor();
 
@@ -242,7 +214,7 @@ void SimUI::drawSimControls(World& world, Renderer& rend) {
 
     ImGui::Separator();
     ImGui::SliderFloat("Mutation Scale",&world.cfg.mutationRateScale, 0.1f, 5.f);
-    ImGui::SliderFloat("Species epsilon",     &world.cfg.speciesEpsilon,   0.05f, 0.5f);
+    ImGui::SliderFloat("Species Epsilon", &world.cfg.speciesEpsilon,    0.05f, 0.5f);
     ImGui::SliderFloat("Plant Grow Rate",&world.cfg.plantGrowRate,   0.f, 5.f);
     ImGui::SliderInt  ("Max Population",&world.cfg.maxPopulation, 100, 4096);
 
@@ -257,19 +229,15 @@ void SimUI::drawSimControls(World& world, Renderer& rend) {
     ImGui::InputInt("Carnivores##sp", &nCarn);
     if (ImGui::Button("Spawn Herbivores")) {
         for (int i = 0; i < nHerb; i++) {
-            float px = globalRNG().range(2.f, (float)(world.worldCX * CHUNK_SIZE - 2));
-            float pz = globalRNG().range(2.f, (float)(world.worldCZ * CHUNK_SIZE - 2));
-            world.spawnCreature(Genome::randomHerbivore(globalRNG()),
-                                world.snapToSurface(px, pz));
+            Vec3 pos = g_planet_surface.randomLandPos(globalRNG());
+            world.spawnCreature(Genome::randomHerbivore(globalRNG()), pos);
         }
     }
     ImGui::SameLine();
     if (ImGui::Button("Spawn Carnivores")) {
         for (int i = 0; i < nCarn; i++) {
-            float px = globalRNG().range(2.f, (float)(world.worldCX * CHUNK_SIZE - 2));
-            float pz = globalRNG().range(2.f, (float)(world.worldCZ * CHUNK_SIZE - 2));
-            world.spawnCreature(Genome::randomCarnivore(globalRNG()),
-                                world.snapToSurface(px, pz));
+            Vec3 pos = g_planet_surface.randomLandPos(globalRNG());
+            world.spawnCreature(Genome::randomCarnivore(globalRNG()), pos);
         }
     }
 
@@ -572,12 +540,6 @@ void SimUI::drawSettingsWindow(World& world, Renderer& rend) {
     ImGui::Checkbox("Lock Yaw When Following##s", &rend.lockYawFollow);
 
     ImGui::SeparatorText("Rendering");
-    ImGui::Checkbox("Show Water##s",    &rend.showWater);
-    ImGui::SliderFloat("Water Level##s",&rend.waterLevel, 0.1f, 3.f);
-    if (ImGui::IsItemEdited()) {
-        // Rebuild water mesh at new height next frame
-        rend.waterBuilt = false;
-    }
     ImGui::Checkbox("Show FOV Cone##s",&rend.showFOVCone);
     ImGui::Checkbox("Wireframe##s",    &rend.wireframe);
     ImGui::Checkbox("Fog of War##s",   &rend.showFogOfWar);
@@ -585,10 +547,10 @@ void SimUI::drawSettingsWindow(World& world, Renderer& rend) {
 
     ImGui::SeparatorText("Hotkeys");
     ImGui::TextDisabled("Space    – Pause / Resume");
-    ImGui::TextDisabled("- / +    – Decrease / Increase sim speed (±0.5×)");
+    ImGui::TextDisabled("- / +    – Decrease / Increase sim speed (1.25×)");
     ImGui::TextDisabled("P        – Possess random creature");
     ImGui::TextDisabled("RMB drag – Rotate camera");
-    ImGui::TextDisabled("W/S/A/R  – Move camera (fwd/back/left/right)");
+    ImGui::TextDisabled("W/S/A/D  – Move camera (fwd/back/left/right)");
     ImGui::TextDisabled("F/Q      – Move camera up/down");
 
     ImGui::SeparatorText("Save / Load");
@@ -619,8 +581,6 @@ void SimUI::saveSettingsToFile(const char* path, const World& world, const Rende
     f << "  \"followSpeed\": "          << rend.camera.follow_speed       << ",\n";
     f << "  \"lockYawFollow\": "        << (rend.lockYawFollow ? "true" : "false") << ",\n";
     // Rendering
-    f << "  \"showWater\": "            << (rend.showWater   ? "true" : "false") << ",\n";
-    f << "  \"waterLevel\": "           << rend.waterLevel                 << ",\n";
     f << "  \"showFOVCone\": "          << (rend.showFOVCone ? "true" : "false") << ",\n";
     f << "  \"fogRadius\": "            << rend.fogRadius                  << "\n";
     f << "}\n";
@@ -663,9 +623,6 @@ void SimUI::loadSettingsFromFile(const char* path, World& world, Renderer& rend)
             else if (has("\"followDist\""))         rend.camera.follow_dist       = std::stof(val);
             else if (has("\"followSpeed\""))        rend.camera.follow_speed      = std::stof(val);
             else if (has("\"lockYawFollow\""))      rend.lockYawFollow            = bval;
-            else if (has("\"showWater\""))          rend.showWater                = bval;
-            else if (has("\"waterLevel\""))       { rend.waterLevel               = std::stof(val);
-                                                    rend.waterBuilt               = false; }
             else if (has("\"showFOVCone\""))        rend.showFOVCone              = bval;
             else if (has("\"fogRadius\""))          rend.fogRadius                = std::stof(val);
         } catch (...) { /* skip malformed lines */ }

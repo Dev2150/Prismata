@@ -27,7 +27,6 @@ set(SOURCES
     src/Renderer/Renderer_Frame.cpp
     src/Renderer/Renderer_Init.cpp
     src/Renderer/Renderer_Overlays.cpp
-    src/Renderer/Renderer_Terrain.cpp
     src/Renderer/Planet/PlanetQuadTree.cpp
     src/Renderer/Planet/PlanetRenderer.cpp
 

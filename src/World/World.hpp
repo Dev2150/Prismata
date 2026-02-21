@@ -18,7 +18,7 @@ constexpr int CHUNK_SIZE = 32;
 struct Chunk {
     int cx = 0, cz = 0;
     VoxelColumn cells[CHUNK_SIZE][CHUNK_SIZE];
-    bool dirty = true;    // GPU mesh needs rebuild
+    bool dirty = false;   // always false in planet mode; flat mesh build is skipped
 };
 
 // ── Plants ────────────────────────────────────────────────────────────────────
@@ -79,29 +79,6 @@ struct World {
     // ── Terrain ───────────────────────────────────────────────────────────────
     std::vector<Chunk> chunks;
 
-    // Bilinear height at world-space (x, z)
-    float heightAt(float x, float z) const;
-
-    // Surface slope (sin of angle from horizontal) at (x,z)
-    float slopeAt(float x, float z) const;
-
-    // True if this column is passable water
-    bool  isWater(float x, float z) const;
-
-    // Nearest water position within radius
-    bool  findWater(const Vec3& from, float radius, Vec3& outPos) const;
-
-    // ── Material lookup (for terrain hover tooltip) ───────────────────────────
-    // Returns the material index of the cell at world-space (x, z).
-    // Material codes: 0=grass, 1=rock, 2=sand, 3=water, 4=snow
-    uint8_t materialAt(float x, float z) const {
-        int gx = std::clamp((int)x, 0, worldCX * CHUNK_SIZE - 1);
-        int gz = std::clamp((int)z, 0, worldCZ * CHUNK_SIZE - 1);
-        const Chunk* ch = chunkAt(gx / CHUNK_SIZE, gz / CHUNK_SIZE);
-        if (!ch) return 0;
-        return ch->cells[gz % CHUNK_SIZE][gx % CHUNK_SIZE].material;
-    }
-
     // Human-readable material name
     static const char* materialName(uint8_t mat) {
         switch (mat) {
@@ -114,11 +91,9 @@ struct World {
         }
     }
 
-    // Public chunk accessor (for Renderer)
-    const Chunk* chunkAtPublic(int cx, int cz) const { return chunkAt(cx, cz); }
-
-    // Snap a world position to the terrain surface
-    Vec3  snapToSurface(float x, float z) const;
+    // ── Planet-surface 3D spatial queries ─────────────────────────────────────
+    float slopeAt3D(const Vec3& worldPos) const;
+    Vec3  normalAt (const Vec3& worldPos) const;
 
     // ── Creatures ─────────────────────────────────────────────────────────────
     std::vector<Creature>               creatures;
@@ -159,8 +134,6 @@ struct World {
     bool saveToFile(const char* path) const;
     bool loadFromFile(const char* path);
     void exportCSV(const char* path) const;
-    float slopeAt3D(const Vec3 &worldPos) const;
-    Vec3 normalAt(const Vec3 &worldPos) const;
 
 private:
     void  growPlants(float dt);
@@ -170,7 +143,6 @@ private:
 
     Chunk*       chunkAt(int cx, int cz);
     const Chunk* chunkAt(int cx, int cz) const;
-    VoxelColumn& columnAt(int gx, int gz);
 
     float heightAt3D(const Vec3 &worldPos) const;
     Vec3 snapToSurface3D(const Vec3 &worldPos) const;

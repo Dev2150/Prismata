@@ -53,7 +53,7 @@ struct Camera {
     float  yaw    = 0.f;    // radians
     float  pitch  = -0.6f;  // radians (negative = looking down)
     float  fovY   = 60.f;   // degrees
-    float  translation_speed = 120.f;
+    float  translation_speed = 200.f;
     float  follow_dist    = 16.f;   // How far behind the creature
     float  follow_height  = 10.f;   // How high above the creature
     float  follow_speed   = 5.f;   // How quickly the camera snaps to position
@@ -77,7 +77,7 @@ struct Camera {
 
     Mat4 projMatrix(float aspect) const {
         return Mat4::perspectiveRH(
-            fovY * 3.14159265f / 180.f, aspect, 0.1f, 1000.f);
+            fovY * 3.14159265f / 180.f, aspect, 1.f, 6000.f);
     }
 };
 
@@ -96,14 +96,8 @@ struct Renderer {
     ID3D11PixelShader*    creaturePS         = nullptr;
     ID3D11InputLayout*    creatureLayout     = nullptr;
 
-    // Simple (position-only) shaders shared by FOV cone and water plane.
-    // waterVS   – wave-animated vertex shader for the water surface.
-    // simpleVS  – plain passthrough VS for the FOV cone.
-    // waterPS   – translucent blue pixel shader.
-    // fovPS     – translucent yellow pixel shader.
+    // FOV cone shaders (position-only)
     ID3D11VertexShader*   simpleVS   = nullptr;
-    ID3D11VertexShader*   waterVS      = nullptr;  // wave-animated water VS
-    ID3D11PixelShader*    waterPS    = nullptr;
     ID3D11PixelShader*    fovPS      = nullptr;
     ID3D11InputLayout*    simpleLayout = nullptr;
 
@@ -111,20 +105,17 @@ struct Renderer {
     ID3D11Buffer*         cbFrame            = nullptr;
     ID3D11Buffer*         creatureInstanceVB = nullptr;
     ID3D11Buffer*         creatureQuadVB     = nullptr;
-    ID3D11Buffer*         waterVB            = nullptr;   // two triangles covering the world
     ID3D11Buffer*         fovConeVB          = nullptr;   // dynamic: updated each frame
 
     // ── States ─────────────────────────────────────────────────────────────────
-    ID3D11RasterizerState*   rsWireframe = nullptr;
-    ID3D11RasterizerState*   rsSolid     = nullptr;
-    ID3D11RasterizerState*   rsSolidNoCull  = nullptr;  // for FOV cone (double-sided)
-    ID3D11DepthStencilState* dssDepth    = nullptr;
-    ID3D11DepthStencilState* dssNoDepthWrite= nullptr;  // depth test ON, write OFF (water)
-    ID3D11BlendState*        bsAlpha     = nullptr;
-    bool waterBuilt = false;                // set after buildWaterMesh()
+    ID3D11RasterizerState*   rsSolid            = nullptr;
+    ID3D11RasterizerState*   rsSolidNoCull      = nullptr;  // for FOV cone (double-sided)
+    ID3D11DepthStencilState* dssDepth           = nullptr;
+    ID3D11DepthStencilState* dssNoDepthWrite    = nullptr;  // depth test ON, write OFF (water)
+    ID3D11BlendState*        bsAlpha            = nullptr;
     size_t MAX_CREATURES = 4096;
 
-    // ── Depth buffer (public so main can bind it) ─────────────────────────────
+    // ── Depth buffer ──────────────────────────────────────────────────────────
     ID3D11Texture2D*        depthTex = nullptr;
     ID3D11DepthStencilView* depthDSV = nullptr;
 
@@ -133,14 +124,11 @@ struct Renderer {
     bool     wireframe    = false;
     bool     showFogOfWar = false;
     float    fogRadius    = 30.f;
-    Float3   fowCenter    = {};
     EntityID playerID     = INVALID_ID;
 
     // ── Rendering features ────────────────────────────────────────────────
     EntityID selectedID   = INVALID_ID;  // creature whose FOV cone to draw
     bool     showFOVCone  = true;        // toggle FOV cone overlay
-    bool     showWater    = true;        // toggle water plane
-    float    waterLevel   = 0.f;       // Y-height of the water plane
     bool     lockYawFollow= false;       // when true, following a creature won't rotate the camera
 
     // ── Creature possession: translation-only follow ───────────────────────────
@@ -207,12 +195,8 @@ private:
     bool createShaders();
     bool createBuffers(int w, int h);
     bool createDepthBuffer(int w, int h);
-    void buildChunkMesh(const World& world, int cx, int cz);
-    void buildWaterMesh(const World& world);
     void updateFrameConstants(const World& world, float aspect);
-    void renderTerrain(const World& world);
     void renderCreatures(const World& world);
-    void renderWater(const World& world);
     void renderFOVCone(const World& world);
 
     static constexpr int FOV_CONE_SEGS = 64;

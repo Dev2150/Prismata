@@ -1,4 +1,5 @@
 #include "World.hpp"
+#include "World_Planet.hpp"
 
 // ── Reproduction ──────────────────────────────────────────────────────────────
 void World::handleReproduction(float dt) {
@@ -17,11 +18,12 @@ void World::handleReproduction(float dt) {
             for (int i = 0; i < litter; i++) {
                 Genome child = Genome::crossover(c.genome, mate.genome, globalRNG());
                 child.mutate(globalRNG());
-                // Scatter offspring around the mother's position
+
+                // Scatter offspring around the mother, snapped to the planet surface
                 Vec3 birthPos = c.pos;
                 birthPos.x += globalRNG().range(-1.f, 1.f);
                 birthPos.z += globalRNG().range(-1.f, 1.f);
-                birthPos.y  = heightAt(birthPos.x, birthPos.z);
+                birthPos = g_planet_surface.snapToSurface(birthPos);
 
                 if ((int)creatures.size() < cfg.maxPopulation)
                     spawnCreature(child, birthPos, c.id, mate.id,

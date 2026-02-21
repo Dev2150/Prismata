@@ -41,9 +41,6 @@ bool Renderer::init(ID3D11Device* dev, ID3D11DeviceContext* c, int w, int h) {
     rd.FillMode = D3D11_FILL_SOLID; rd.CullMode = D3D11_CULL_BACK;
     device->CreateRasterizerState(&rd, &rsSolid);
 
-    rd.FillMode = D3D11_FILL_WIREFRAME; rd.CullMode = D3D11_CULL_NONE;
-    device->CreateRasterizerState(&rd, &rsWireframe);
-
     rd.FillMode = D3D11_FILL_SOLID; rd.CullMode = D3D11_CULL_NONE;  // both sides — for FOV cone
     device->CreateRasterizerState(&rd, &rsSolidNoCull);
 
@@ -56,8 +53,7 @@ bool Renderer::init(ID3D11Device* dev, ID3D11DeviceContext* c, int w, int h) {
     dsd.DepthFunc      = D3D11_COMPARISON_LESS;
     device->CreateDepthStencilState(&dsd, &dssDepth);
 
-    // Test-only (no write): used for transparent overlays (water, FOV cone).
-    // They can be hidden by terrain but won't block each other.
+    // No depth write: used for FOV cone overlay (depth test ON, write OFF).
     dsd.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
     device->CreateDepthStencilState(&dsd, &dssNoDepthWrite);
 
@@ -79,29 +75,7 @@ bool Renderer::init(ID3D11Device* dev, ID3D11DeviceContext* c, int w, int h) {
     return true;
 }
 
-// ── createShaders ─────────────────────────────────────────────────────────────
-// Compiles all HLSL shaders and creates the input layouts that tell the GPU
-// how to read vertex data from buffers (which bytes = position, normal, etc.).
 bool Renderer::createShaders() {
-
-    // ── Terrain ───────────────────────────────────────────────────────────────
-    ID3DBlob* tvs = compileShader(TERRAIN_HLSL, "VSMain", "vs_5_0");
-    ID3DBlob* tps = compileShader(TERRAIN_HLSL, "PSMain", "ps_5_0");
-    if (!tvs || !tps) { if(tvs)tvs->Release(); if(tps)tps->Release(); return false; }
-    device->CreateVertexShader(tvs->GetBufferPointer(), tvs->GetBufferSize(), nullptr, &terrainVS);
-    device->CreatePixelShader (tps->GetBufferPointer(), tps->GetBufferSize(), nullptr, &terrainPS);
-
-    // Input layout: maps TerrainVertex struct fields → HLSL VIn semantics.
-    // Format R32G32B32_FLOAT = 3 floats = 12 bytes (XYZ).
-    // AlignedByteOffset: byte position of this field within the struct.
-    D3D11_INPUT_ELEMENT_DESC td[] = {
-        {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0,  0, D3D11_INPUT_PER_VERTEX_DATA, 0},
-        {"NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
-        {"COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0},
-    };
-    device->CreateInputLayout(td, 3, tvs->GetBufferPointer(), tvs->GetBufferSize(), &terrainLayout);
-    tvs->Release(); tps->Release();
-
     // ── Creature billboards (instanced) ───────────────────────────────────────
     // Two buffer slots:
     //   slot 0: per-vertex quad corners (PER_VERTEX_DATA)
@@ -133,14 +107,12 @@ bool Renderer::createShaders() {
     ID3DBlob* wvs  = compileShader(SIMPLE_HLSL, "WaterVSMain", "vs_5_0");
     ID3DBlob* wps = compileShader(SIMPLE_HLSL, "WaterPS", "ps_5_0");
     ID3DBlob* fps = compileShader(SIMPLE_HLSL, "FovPS",   "ps_5_0");
-    if (!svs || !wvs || !wps || !fps) {
-        if(svs)svs->Release(); if(wvs)wvs->Release();
-        if(wps)wps->Release(); if(fps)fps->Release();
+    if (!svs || !fps) {
+        if(svs) svs->Release();
+        if(fps) fps->Release();
         return false;
     }
     device->CreateVertexShader(svs->GetBufferPointer(), svs->GetBufferSize(), nullptr, &simpleVS);
-    device->CreateVertexShader(wvs->GetBufferPointer(), wvs->GetBufferSize(), nullptr, &waterVS);
-    device->CreatePixelShader (wps->GetBufferPointer(), wps->GetBufferSize(), nullptr, &waterPS);
     device->CreatePixelShader (fps->GetBufferPointer(), fps->GetBufferSize(), nullptr, &fovPS);
 
     // Input layout is the same for all simple variants (position-only)
@@ -150,7 +122,7 @@ bool Renderer::createShaders() {
     // Use svs bytecode for layout creation (any of the VS blobs would work since
     // they share the same input signature)
     device->CreateInputLayout(sd, 1, svs->GetBufferPointer(), svs->GetBufferSize(), &simpleLayout);
-    svs->Release(); wvs->Release(); wps->Release(); fps->Release();
+    svs->Release(); fps->Release();
 
     return true;
 }
@@ -226,16 +198,13 @@ void Renderer::resize(int w, int h) {
 // D3D11 objects use COM reference counting. Release() decrements the count;
 // the object is freed when it reaches zero. safeRelease() also nulls the pointer.
 void Renderer::shutdown() {
-    for (auto& cm : chunkMeshes) { safeRelease(cm.vb); safeRelease(cm.ib); }
-    safeRelease(terrainVS);  safeRelease(terrainPS);
     safeRelease(creatureVS); safeRelease(creaturePS);
-    safeRelease(simpleVS);   safeRelease(waterVS);
-    safeRelease(waterPS);    safeRelease(fovPS);
-    safeRelease(terrainLayout); safeRelease(creatureLayout); safeRelease(simpleLayout);
+    safeRelease(simpleVS);   safeRelease(fovPS);
+    safeRelease(creatureLayout); safeRelease(simpleLayout);
     safeRelease(cbFrame);
     safeRelease(creatureQuadVB); safeRelease(creatureInstanceVB);
-    safeRelease(waterVB);    safeRelease(fovConeVB);
-    safeRelease(rsWireframe); safeRelease(rsSolid); safeRelease(rsSolidNoCull);
+    safeRelease(fovConeVB);
+    safeRelease(rsSolid);    safeRelease(rsSolidNoCull);
     safeRelease(dssDepth);   safeRelease(dssNoDepthWrite);
     safeRelease(bsAlpha);
     safeRelease(depthTex);   safeRelease(depthDSV);

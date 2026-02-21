@@ -5,9 +5,7 @@
 #include <chrono>
 #include <algorithm>
 #include <cmath>
-
 #include "App/App_Globals.hpp"
-#include "App/App_Globals_Planet.hpp"
 
 int RunApplication()
 {
@@ -107,10 +105,6 @@ int RunApplication()
         return 1;
     }
 
-    // Disable flat-world overlays that don't apply to the planet
-    g_renderer.showWater   = false;   // no flat water plane
-    g_renderer.showFOVCone = true;    // FOV cone still drawn (planet-draped version)
-
     // ── Planet renderer ───────────────────────────────────────────────────────
     PlanetConfig pcfg;
     pcfg.radius          = 1000.f;
@@ -122,11 +116,16 @@ int RunApplication()
 
     if (!g_planet.init(g_pd3dDevice, g_pd3dDeviceContext, pcfg)) {
         OutputDebugStringA("FATAL: Planet init failed!\n");
-        // handle error
+        //TODO: handle error
     }
 
     // ── Camera: start above the planet surface ────────────────────────────────
-    SetupPlanetCamera(g_renderer);
+    // Planet center = (0, -1800, 0), radius = 1000 → top surface ≈ y = -800.
+    g_renderer.camera.pos   = {0.f, -600.f, 0.f};
+    g_renderer.camera.yaw   = 0.f;
+    g_renderer.camera.pitch = -1.5f;
+    g_renderer.camera.fovY  = 60.f;
+    g_renderer.camera.translation_speed = 200.f;
 
     // ── Load default settings ─────────────────────────────────────────────────
     g_ui.loadSettingsFromFile("default.json", g_world, g_renderer);
@@ -242,8 +241,7 @@ int RunApplication()
         g_planet.render(g_renderer.camera, aspect,
                         g_world.timeOfDay(), g_world.simTime);
 
-        // Clear depth again so creature billboards and FOV cone are drawn
-        //    on top of the planet surface without z-fighting.
+        // Clear depth so creatures and FOV cone draw on top of the planet
         if (g_renderer.depthDSV)
             g_pd3dDeviceContext->ClearDepthStencilView(
                 g_renderer.depthDSV, D3D11_CLEAR_DEPTH, 1.f, 0);

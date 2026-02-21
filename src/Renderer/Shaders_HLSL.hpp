@@ -6,62 +6,6 @@
 // D3DCompile(). Each string may contain multiple entry points (functions).
 // cbuffer FrameConstants must exactly match the C++ struct in Renderer.hpp.
 
-// ── Terrain shader ────────────────────────────────────────────────────────────
-// Draws the terrain mesh with Lambertian (diffuse) lighting and fog-of-war.
-static const char* TERRAIN_HLSL = R"HLSL(
-cbuffer FrameConstants : register(b0) {
-    float4x4 viewProj;   // combined View*Projection matrix — projects 3D → 2D screen
-    float4   camPos;     // camera world position (xyz)
-    float4   lightDir;      // FROM sun TOWARD scene (shader negates for dot product)
-    float4   fowData;       // xyz=player pos, w=radius (0=disabled)
-    float4   sunColor;      // rgb=sun tint, w=timeOfDay [0,1]
-    float4   ambientColor;  // rgb=sky/ambient, w=unused
-};
-
-struct VIn {
-    float3 pos : POSITION;
-    float3 nrm : NORMAL;
-    float4 col : COLOR;
-};
-struct VOut {
-    float4 sv   : SV_POSITION;  // required: final clip-space position
-    float3 wpos : TEXCOORD0;    // world-space position (for fog calc)
-    float3 nrm  : TEXCOORD1;    // surface normal (for lighting)
-    float4 col  : TEXCOORD2;    // vertex colour (interpolated across triangle)
-};
-
-VOut VSMain(VIn v) {
-    VOut o;
-    o.sv   = mul(float4(v.pos, 1.0f), viewProj);
-    o.wpos = v.pos;
-    o.nrm  = v.nrm;
-    o.col  = v.col;
-    return o;
-}
-
-float4 PSMain(VOut v) : SV_TARGET {
-    // Lambertian lighting: brightness = max(0, dot(normal, light_direction))
-    // L = direction FROM surface TOWARD sun
-    float3 L   = normalize(-lightDir.xyz);
-    float  ndl = saturate(dot(normalize(v.nrm), L));
-
-    // Two-term lighting: ambient (sky) + sun (directional)
-    float3 lit = v.col.rgb * (ambientColor.rgb + sunColor.rgb * ndl);
-
-    // Fog of war: darken terrain outside the player's vision radius
-    if (fowData.w > 0.0f) {
-        float d = length(v.wpos.xz - fowData.xz);
-        float f = saturate((d - fowData.w * 0.8f) / (fowData.w * 0.2f + 0.001f));
-        // At night blend toward darker tone; during day blend toward grey
-        float3 dark = lerp(float3(0.01f, 0.01f, 0.04f),
-                           float3(0.05f, 0.05f, 0.08f),
-                           saturate(sunColor.w * 2.0f - 0.5f));
-        lit = lerp(lit, dark, f * f);
-    }
-    return float4(lit, 1.0f);
-}
-)HLSL";
-
 // ── Creature billboard shader ──────────────────────────────────────────────────
 // Draws creatures as camera-facing quads using GPU instancing.
 // Slot 0 = per-vertex quad corners; slot 1 = per-creature position/colour/size.
@@ -144,38 +88,7 @@ VOut VSMain(VIn v) {
     return o;
 }
 
-// ── Water VS ──────────────────────────────────────────────────────────────────
-// Adds three overlapping sine waves to create a gentle, organic water surface.
-// Using two spatial frequencies + one diagonal wave breaks the flat-plane look
-// even with the sparse vertex count of the water quad.
-VOut WaterVSMain(VIn v) {
-    float t   = ambientColor.w;   // simTime in seconds
-    float x   = v.pos.x;
-    float z   = v.pos.z;
-
-    // Primary swell: long, slow wave travelling diagonally
-    float wave  = sin(x * 0.07f + z * 0.05f + t * 0.8f) * 0.18f;
-    // Secondary ripple: shorter, faster, perpendicular direction
-    wave       += sin(x * 0.13f - z * 0.09f + t * 1.3f) * 0.09f;
-    // Tertiary micro-chop: high frequency, low amplitude
-    wave       += sin(x * 0.27f + z * 0.22f - t * 1.9f) * 0.04f;
-
-    float3 wpos = float3(v.pos.x, v.pos.y + wave, v.pos.z);
-    VOut o;
-    o.sv   = mul(float4(wpos, 1.0f), viewProj);
-    o.wpos = wpos;
-    return o;
-}
-
-// ── Pixel shaders ─────────────────────────────────────────────────────────────
-float4 WaterPS(VOut v) : SV_TARGET {
-    // Subtle brightness based on time of day so water darkens at night
-    float dayBrightness = saturate(sunColor.w * 1.6f + 0.2f);
-    float3 waterCol = float3(0.08f, 0.35f, 0.72f) * (0.4f + 0.6f * dayBrightness);
-    return float4(waterCol, 0.72f);
-}
-
 float4 FovPS(VOut v) : SV_TARGET {
-    return float4(1.0f, 0.95f, 0.2f, 0.18f);   // translucent yellow
+    return float4(1.0f, 0.95f, 0.2f, 0.18f);
 }
 )HLSL";

@@ -171,10 +171,10 @@ inline float sampleHeight(float dx, float dy, float dz,
     // Blend: below coastline → ocean floor; above → land terrain
     float h;
     if (continent < 0.1f) {
-        // Deep ocean
-        h = -seaFloor + continent * (seaFloor / 0.1f) + oceanH * 0.1f;
+        // Smoothly interpolate from ocean floor to 0 at the coastline
+        float oceanFrac = continent / 0.1f;
+        h = lerp(oceanFrac, -seaFloor + oceanH, 0.0f);
     } else {
-        // Smooth beach → land transition in continent [0.1, 0.3]
         float landFrac = std::min(1.f, (continent - 0.1f) / 0.2f);
         h = landFrac * landH;
     }

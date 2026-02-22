@@ -282,16 +282,14 @@ void PlanetRenderer::uploadFrameConstants(const World& world, const Renderer& re
         fc->lightDir[0]/=ll; fc->lightDir[1]/=ll; fc->lightDir[2]/=ll;
     }
 
-    float sunStr  = std::max(0.f, elev);
-    fc->sunColor[0] = 1.f * sunStr;
-    fc->sunColor[1] = 0.92f * sunStr;
-    fc->sunColor[2] = 0.75f * sunStr;
+    fc->sunColor[0] = 1.00f;
+    fc->sunColor[1] = 0.95f;
+    fc->sunColor[2] = 0.80f;
     fc->sunColor[3] = world.timeOfDay();
 
-    float ambStr = 0.08f + sunStr * 0.25f;
-    fc->ambientColor[0] = 0.15f * ambStr + 0.05f;
-    fc->ambientColor[1] = 0.22f * ambStr + 0.05f;
-    fc->ambientColor[2] = 0.35f * ambStr + 0.08f;
+    fc->ambientColor[0] = 0.05f;
+    fc->ambientColor[1] = 0.05f;
+    fc->ambientColor[2] = 0.08f;
     fc->ambientColor[3] = world.simTime;
 
     if (rend.showFogOfWar && rend.playerID != INVALID_ID) {

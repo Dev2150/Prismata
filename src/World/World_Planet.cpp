@@ -11,9 +11,9 @@
 // so the camera starts slightly above center + radius.
 PlanetSurface g_planet_surface = []() {
     PlanetSurface ps;
-    ps.center      = {0.f, -1800.f, 0.f};
-    ps.radius      = 1000.f;
-    ps.heightScale = 120.f;
+    ps.center      = {0.f, -180000.f, 0.f};
+    ps.radius      = 100000.f;
+    ps.heightScale = 12000.f;
     ps.seaLevel    = 0.f;   // noise height below 0 = ocean
     return ps;
 }();

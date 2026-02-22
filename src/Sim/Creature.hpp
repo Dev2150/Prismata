@@ -129,7 +129,7 @@ struct Creature {
     //   Climb:  extra cost proportional to the terrain slope being traversed
     float energyCost(float speed, float slopeSin, float dt) const {
         const float kBasal = 0.008f;   // energy/kg/s at rest
-        const float kMove  = 0.04f;    // energy/kg/(m/s)² – quadratic locomotion cost
+        const float kMove  = 0.000004f;    // energy/kg/(m/s)² – quadratic locomotion cost
         const float kClimb = 0.025f;   // energy/kg per unit sin(slope) – hill-climbing penalty
         return (kBasal * mass
               + kMove  * speed * speed * mass

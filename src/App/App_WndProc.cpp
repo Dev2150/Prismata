@@ -118,11 +118,11 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             if (dl < 1e-6f) break;
             dx /= dl; dy /= dl; dz /= dl;
 
-            // Find the living creature whose position is within 3 m of the ray.
+            // Find the living creature whose position is within {bestDist} meters of the ray.
             // For each creature, compute the perpendicular distance from its centre
             // to the ray using the formula: d = |OC - (OC·d)d| where OC is the
             // vector from the ray origin to the creature centre and d is the ray direction.
-            float    bestDist = 3.f;   // selection radius: 3 m from the ray
+            float    bestDist = 300.f;   // selection radius in meters from the ray
             EntityID bestID   = INVALID_ID;
             for (const auto& c : g_world.creatures) {
                 if (!c.alive) continue;

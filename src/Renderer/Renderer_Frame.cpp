@@ -46,50 +46,16 @@ static void computeDayNightLighting(float timeOfDay,
                         + lightDir[2]*lightDir[2]);
     if (len > 1e-6f) { lightDir[0]/=len; lightDir[1]/=len; lightDir[2]/=len; }
 
-    // ── Sun colour ────────────────────────────────────────────────────────────
-    // Reference colours (sRGB-ish):
-    //   Night   : no direct sun
-    //   Dawn/Dusk: warm orange-red
-    //   Day     : bright warm white
+    // On a spherical planet, the sun doesn't turn off. It's always shining.
+    // The local day/night is handled by NdL in the shaders.
+    sunColor[0] = 1.00f;
+    sunColor[1] = 0.95f;
+    sunColor[2] = 0.80f;
+    sunColor[3] = timeOfDay;
 
-    static const float colNight[3]    = {0.00f, 0.00f, 0.00f};
-    static const float colHorizon[3]  = {1.00f, 0.45f, 0.10f}; // orange glow
-    static const float colDay[3]      = {1.00f, 0.95f, 0.80f}; // warm white
-
-    float aboveHorizon = std::max(0.f, elevation);
-    float horizonBlend = smoothStep(-0.15f, 0.25f, elevation);
-    float dayBlend     = smoothStep( 0.15f, 0.55f, elevation);
-
-    float midSun[3];
-    lerpColor(colNight, colHorizon, horizonBlend, midSun);
-    float finalSun[3];
-    lerpColor(midSun, colDay, dayBlend, finalSun);
-
-    // Scale brightness by elevation so the sun doesn't light underground
-    sunColor[0] = finalSun[0] * aboveHorizon;
-    sunColor[1] = finalSun[1] * aboveHorizon;
-    sunColor[2] = finalSun[2] * aboveHorizon;
-    sunColor[3] = timeOfDay;   // w = timeOfDay for the creature brightness shader
-
-    // ── Ambient (sky) colour ──────────────────────────────────────────────────
-    // Night: deep blue  /  Dawn-Dusk: purple-pink  /  Day: cool pale blue sky
-
-    static const float ambNight[3]   = {0.03f, 0.04f, 0.12f};
-    static const float ambHorizon[3] = {0.20f, 0.14f, 0.20f}; // lavender dusk
-    static const float ambDay[3]     = {0.28f, 0.35f, 0.48f}; // sky blue
-
-    float midAmb[3];
-    lerpColor(ambNight, ambHorizon, horizonBlend, midAmb);
-    float finalAmb[3];
-    lerpColor(midAmb, ambDay, dayBlend, finalAmb);
-
-    ambientColor[0] = finalAmb[0];
-    ambientColor[1] = finalAmb[1];
-    ambientColor[2] = finalAmb[2];
-    // ── ambientColor.w = simTime (seconds) ────────────────────────────────────
-    // Consumed by WaterVSMain in SIMPLE_HLSL to drive the wave animation.
-    // Value is set by the caller (updateFrameConstants) from world.simTime.
-    // Left at 0 here; overwritten below.
+    ambientColor[0] = 0.05f;
+    ambientColor[1] = 0.05f;
+    ambientColor[2] = 0.08f;
     ambientColor[3] = 0.f;
 }
 

@@ -63,10 +63,10 @@ struct Genome {
 
     // ── Accessors (raw gene → biological value) ───────────────────────────────
     // Each accessor applies a linear map:  biological = lo + raw * (hi - lo)
-    float bodySize()        const { return map(GENE_BODY_SIZE,       0.5f,  3.0f); }
-    float maxSpeed()        const { return map(GENE_MAX_SPEED,       0.5f, 12.0f); }
+    float bodySize()        const { return map(GENE_BODY_SIZE,        50.f,  300.f); }
+    float maxSpeed()        const { return map(GENE_MAX_SPEED,        50.f, 1200.f); }
+    float visionRange()     const { return map(GENE_VISION_RANGE,    200.f, 5000.f); }
     float maxSlope()        const { return map(GENE_MAX_SLOPE,       5.0f, 65.0f); }
-    float visionRange()     const { return map(GENE_VISION_RANGE,    2.0f, 50.0f); }
     float visionFOV()       const { return map(GENE_VISION_FOV,     30.0f,340.0f); }
 
     // Diet efficiencies are already in [0,1] so no remapping needed

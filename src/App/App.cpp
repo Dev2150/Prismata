@@ -119,9 +119,9 @@ int RunApplication()
 
     // ── Planet renderer ───────────────────────────────────────────────────────
     PlanetConfig pcfg;
-    pcfg.radius          = 1000.f;
-    pcfg.center          = {0.f, -1800.f, 0.f};   // planet below the flat world
-    pcfg.heightScale     = 120.f;     // max terrain height above sea level
+    pcfg.radius          = 100000.f;
+    pcfg.center          = {0.f, -180000.f, 0.f};   // planet below the flat world
+    pcfg.heightScale     = 12000.f;     // max terrain height above sea level
     pcfg.maxDepth        = 16;        // deepest LOD level (~1.5m patches at max)
     pcfg.patchRes        = 17;        // 17×17 vertices per patch (16×16 quads)
     pcfg.splitThreshold  = 1.2f;      // tune for quality vs performance
@@ -133,11 +133,11 @@ int RunApplication()
 
     // ── Camera: start above the planet surface ────────────────────────────────
     // Planet center = (0, -1800, 0), radius = 1000 → top surface ≈ y = -1800+100= -800.
-    g_renderer.camera.pos   = {0.f, -600.f, 0.f};
+    g_renderer.camera.pos   = {0.f, -60000.f, 0.f};
     g_renderer.camera.fwd   = {0.f, std::sin(-1.5f), std::cos(-1.5f)};
     g_renderer.camera.up    = {0.f, 1.f, 0.f};
     g_renderer.camera.fovY  = 60.f;
-    g_renderer.camera.translation_speed = 200.f;
+    g_renderer.camera.translation_speed = 20000.f;
 
     // ── Load default settings ─────────────────────────────────────────────────
     g_ui.loadSettingsFromFile("default.json", g_world, g_renderer);

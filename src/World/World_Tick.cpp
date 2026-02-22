@@ -23,8 +23,8 @@ void World::handleReproduction(float dt) {
 
                 // Scatter offspring around the mother, snapped to the planet surface
                 Vec3 birthPos = c.pos;
-                birthPos.x += globalRNG().range(-1.f, 1.f);
-                birthPos.z += globalRNG().range(-1.f, 1.f);
+                birthPos.x += globalRNG().range(-100.f, 100.f);
+                birthPos.z += globalRNG().range(-100.f, 100.f);
                 birthPos = g_planet_surface.snapToSurface(birthPos);
 
                 if ((int)creatures.size() < cfg.maxPopulation)
@@ -46,7 +46,7 @@ void World::handleReproduction(float dt) {
         if (c.behavior == BehaviorState::Mating) continue;
         if (c.needs.level[(int)Drive::Libido] < 0.7f) continue;
         if (c.nearestMate == INVALID_ID) continue;
-        if (c.nearestMateDist > 1.5f) continue;
+        if (c.nearestMateDist > 150.f) continue;
 
         auto it = idToIndex.find(c.nearestMate);
         if (it == idToIndex.end()) continue;

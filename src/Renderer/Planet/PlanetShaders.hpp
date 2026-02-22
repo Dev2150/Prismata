@@ -256,8 +256,8 @@ struct SVOut {
 
 SVOut SunVS(SVIn v) {
     // Place the sun very far away in the direction toward it
-    static const float SUN_DIST = 5000.0f;
-    static const float SUN_SIZE = 1600.0f;   // world-unit radius of the billboard
+    static const float SUN_DIST = 500000.0f;
+    static const float SUN_SIZE = 160000.0f;   // world-unit radius of the billboard
 
     float3 sunDir    = normalize(sunInfo.xyz);           // scene→sun
     float3 sunCenter = camPos.xyz + sunDir * SUN_DIST;

@@ -155,7 +155,7 @@ private:
     std::vector<EntityID> queryRadius(const Vec3& center, float radius) const;
 
     struct SpatialHash {
-        float cellSize = 5.f;
+        float cellSize = 500.f;
         std::unordered_map<uint64_t, std::vector<EntityID>> cells;
         uint64_t key(int cx, int cz) const {
             return (static_cast<uint64_t>(cx + 30000) << 32)

@@ -100,7 +100,7 @@ void SimUI::updateTerrainHover(const Renderer& rend, const World& world) {
 
     if (dl > 1e-6f) {
         dx /= dl; dy /= dl; dz /= dl;
-        float bestDist = 3.f; // 3m selection radius
+        float bestDist = 300.f; // m selection radius
 
         // Check creatures
         for (const auto& c : world.creatures) {
@@ -684,7 +684,7 @@ void SimUI::drawPlayerPanel(World& world, Renderer& rend) {
                         driveName(c.needs.activeDrive()));
 
             ImGui::Checkbox("Fog of War", &rend.showFogOfWar);
-            ImGui::SliderFloat("Fog Radius", &rend.fogRadius, 5.f, 80.f);
+            ImGui::SliderFloat("Fog Radius", &rend.fogRadius, 500.f, 8000.f);
             ImGui::Checkbox("Lock Yaw Follow", &rend.lockYawFollow);
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("When enabled, following a creature\nwon't rotate the camera.");
@@ -722,8 +722,8 @@ void SimUI::drawSettingsWindow(World& world, Renderer& rend) {
 
     ImGui::SeparatorText("Camera");
     ImGui::SliderFloat("FOV##s",             &rend.camera.fovY,                30.f, 120.f);
-    ImGui::SliderFloat("Move Speed##s",      &rend.camera.translation_speed,   10.f, 400.f);
-    ImGui::SliderFloat("Follow Distance##s", &rend.camera.follow_dist,          2.f,  40.f);
+    ImGui::SliderFloat("Move Speed##s",      &rend.camera.translation_speed,   1000.f, 40000.f);
+    ImGui::SliderFloat("Follow Distance##s", &rend.camera.follow_dist,          200.f,  4000.f);
     ImGui::SliderFloat("Follow Speed##s",    &rend.camera.follow_speed,         1.f,  20.f);
     ImGui::Checkbox("Lock Yaw When Following##s", &rend.lockYawFollow);
 
@@ -731,7 +731,7 @@ void SimUI::drawSettingsWindow(World& world, Renderer& rend) {
     ImGui::Checkbox("Show FOV Cone##s",&rend.showFOVCone);
     ImGui::Checkbox("Wireframe##s",    &rend.wireframe);
     ImGui::Checkbox("Fog of War##s",   &rend.showFogOfWar);
-    ImGui::SliderFloat("Fog Radius##s",&rend.fogRadius, 5.f, 80.f);
+    ImGui::SliderFloat("Fog Radius##s",&rend.fogRadius, 500.f, 8000.f);
 
     ImGui::SeparatorText("Hotkeys");
     ImGui::TextDisabled("Space    – Pause / Resume");

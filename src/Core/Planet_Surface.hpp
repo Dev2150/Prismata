@@ -49,12 +49,6 @@ struct PlanetSurface {
         return surfacePos(worldPos - center);
     }
 
-    // Noise-based height above the sphere's base radius (negative = below).
-    float noiseHeight(Vec3 worldPos) const {
-        Vec3 d = (worldPos - center).normalised();
-        return PlanetNoise::sampleHeight(d.x, d.y, d.z, heightScale);
-    }
-
     // Distance from center to the displaced surface along this direction.
     float radiusAt(Vec3 worldPos) const {
         return radius + noiseHeight(worldPos);
@@ -85,16 +79,16 @@ struct PlanetSurface {
                    n.z*t1.x - n.x*t1.z,
                    n.x*t1.y - n.y*t1.x};
 
-        const float eps = 1.f;   // world-unit step for finite difference
-        Vec3 p1 = snapToSurface(worldPos + t1 * eps);
-        Vec3 p2 = snapToSurface(worldPos - t1 * eps);
-        Vec3 p3 = snapToSurface(worldPos + t2 * eps);
-        Vec3 p4 = snapToSurface(worldPos - t2 * eps);
+        const float eps_step = 100.f;   // world-unit step for finite difference
+        Vec3 p1 = snapToSurface(worldPos + t1 * eps_step);
+        Vec3 p2 = snapToSurface(worldPos - t1 * eps_step);
+        Vec3 p3 = snapToSurface(worldPos + t2 * eps_step);
+        Vec3 p4 = snapToSurface(worldPos - t2 * eps_step);
 
         // Height difference along the normal direction
         float dh1 = (p1 - p2).dot(n);
         float dh2 = (p3 - p4).dot(n);
-        float grad = std::sqrt(dh1*dh1 + dh2*dh2) / (2.f * eps);
+        float grad = std::sqrt(dh1*dh1 + dh2*dh2) / (2.f * eps_step);
         return std::sin(std::atan(grad));
     }
 

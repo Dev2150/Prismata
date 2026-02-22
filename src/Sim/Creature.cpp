@@ -43,7 +43,7 @@ float Creature::tick(float dt, World& world) {
             const Creature& prey = world.creatures[world.idToIndex.at(nearestPrey)];
             steerToward(prey.pos, spd, dt);
             // Bite if close enough (within 1.2 m, approximately melee range)
-            if (nearestPreyDist < 1.2f) {
+            if (nearestPreyDist < 120.f) {
                 Creature& prey2 = world.creatures[world.idToIndex.at(nearestPrey)];
                 float bite = 20.f * genome.carnEfficiency() * dt;  // damage per second
                 prey2.energy -= bite;
@@ -54,7 +54,7 @@ float Creature::tick(float dt, World& world) {
         } else if (isHerbivore() && nearestFoodDist < genome.visionRange()) {
             behavior = BehaviorState::SeekFood;
             steerToward(nearestFood, spd, dt);
-            if (nearestFoodDist < 1.2f) {
+            if (nearestFoodDist < 120.f) {
                 // Graze: consume up to 15*herbEff nutrition per second from the nearest plant
                 for (auto& p : world.plants) {
                     if (!p.alive) continue;
@@ -83,7 +83,7 @@ float Creature::tick(float dt, World& world) {
             float rx = globalRNG().normal(0,1);
             float rz = globalRNG().normal(0,1);
             Vec3 wander = t1 * rx + t2 * rz;
-            steerToward(pos + wander * 5.f, spd * 0.3f, dt);
+            steerToward(pos + wander * 500.f, spd * 0.3f, dt);
         }
         break;
 
@@ -92,7 +92,7 @@ float Creature::tick(float dt, World& world) {
         behavior = BehaviorState::SeekWater;
         if (nearestWaterDist < genome.visionRange()) {
             steerToward(nearestWater, spd, dt);
-            if (nearestWaterDist < 1.5f) {
+            if (nearestWaterDist < 150.f) {
                 needs.satisfy(Drive::Thirst, 0.5f * dt);   // drink at 0.5 units/sec
             }
         }

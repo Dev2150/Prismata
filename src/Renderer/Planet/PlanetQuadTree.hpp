@@ -52,7 +52,7 @@ struct PlanetConfig {
 
     // Atmospheric / visual
     float    seaLevel        = 0.f;     // y-offset where ocean surface sits
-    float    snowLine        = 0.85f;   // fraction of heightScale above which = snow
+    float    snowLine        = 0.92f;   // fraction of heightScale above which = snow
 };
 
 // ── Cube face definitions ─────────────────────────────────────────────────────

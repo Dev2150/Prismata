@@ -55,9 +55,9 @@ struct Camera {
     float  fovY   = 60.f;   // degrees
     float  translation_speed = 200.f;
     float  zoom_speed_coefficient = 0.1f;
-    float  follow_dist    = 16.f;   // How far behind the creature
-    float  follow_height  = 10.f;   // How high above the creature
-    float  follow_speed   = 5.f;   // How quickly the camera snaps to position
+    float  follow_dist    = 8000.f;   // How far behind the creature
+    float  follow_height  = 500.f;   // How high above the creature
+    float  follow_speed   = 250.f;   // How quickly the camera snaps to position
 
     Float3 forward() const {
         return fwd;

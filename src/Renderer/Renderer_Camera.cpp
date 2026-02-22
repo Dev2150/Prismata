@@ -36,7 +36,7 @@ void Renderer::tickCamera(float dt, const World& world) {
             forward = g_planet_surface.projectToTangent(creature.pos, forward).normalised();
 
             // A little bit above and slightly behind
-            Vec3 idealOffset = creatureNormal * 10000.0f - forward * 0.0f;
+            Vec3 idealOffset = creatureNormal * 20000.0f - forward * 0.0f;
             possessOffset.x = idealOffset.x;
             possessOffset.y = idealOffset.y;
             possessOffset.z = idealOffset.z;

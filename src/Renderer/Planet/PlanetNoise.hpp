@@ -166,16 +166,15 @@ inline float sampleHeight(float dx, float dy, float dz,
     mountMask = std::max(0.f, mountMask);
 
     // Land height: mostly hills, pockets of mountains, clipped at [0,1]
-    float landH = (hills * 0.6f + mounts * mountMask * 0.8f);
+    float landH = (hills * 1.8f + mounts * mountMask * 2.4f);
 
     // Blend: below coastline → ocean floor; above → land terrain
     float h;
     if (continent < 0.1f) {
-        // Smoothly interpolate from ocean floor to 0 at the coastline
-        float oceanFrac = continent / 0.1f;
-        h = lerp(oceanFrac, -seaFloor + oceanH, 0.0f);
+        h = -seaFloor;
     } else {
-        float landFrac = std::min(1.f, (continent - 0.1f) / 0.2f);
+        // Sharp coast (0.02 range instead of 0.2) → cliffs at shoreline
+        float landFrac = std::min(1.f, (continent - 0.1f) / 0.1f);
         h = landFrac * landH;
     }
 

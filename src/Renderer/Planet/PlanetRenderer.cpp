@@ -126,7 +126,7 @@ bool PlanetRenderer::createBuffers() {
 // gives a convincing glowing limb effect when viewed from space.
 bool PlanetRenderer::createAtmosphere() {
     const int stacks = 32, slices = 48;
-    float radius_atmosphere = cfg.radius * 1.1f;
+    float radius_atmosphere = cfg.radius * 1.3f;
 
     std::vector<float> verts;
     verts.reserve(stacks * slices * 3);

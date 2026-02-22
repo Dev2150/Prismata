@@ -13,7 +13,7 @@ PlanetSurface g_planet_surface = []() {
     PlanetSurface ps;
     ps.center      = {0.f, -180000.f, 0.f};
     ps.radius      = 100000.f;
-    ps.heightScale = 12000.f;
+    ps.heightScale = 20000.f;
     ps.seaLevel    = 0.f;   // noise height below 0 = ocean
     return ps;
 }();

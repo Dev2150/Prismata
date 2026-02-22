@@ -65,9 +65,9 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             return 0;
         }
 
-        // ── Mouse wheel: zoom in/out (radial movement along planet normal) ──────
-        // WHEEL_DELTA = 120 per notch. It's normalized to notch count (±1 per notch).
-        // Positive = scroll up = move away from planet (zoom out).
+            // ── Mouse wheel: zoom in/out (radial movement along planet normal) ──────
+            // WHEEL_DELTA = 120 per notch. It's normalized to notch count (±1 per notch).
+            // Positive = scroll up = move away from planet (zoom out).
         case WM_MOUSEWHEEL: {
             if (!ImGui::GetIO().WantCaptureMouse) {
                 float notches = (float)(GET_WHEEL_DELTA_WPARAM(wParam)) / WHEEL_DELTA;
@@ -164,8 +164,8 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     g_renderer.showFogOfWar  = false;
                 } else if (g_ui.selectedID != INVALID_ID) {
                     g_renderer.playerID = g_ui.selectedID;
-                    }
                 }
+            }
             // ── J: toggle hiding objects outside FOV ────────────────────────────
             else if (wParam == 'j' || wParam == 'J') {
                 g_renderer.hideOutsideFOV = !g_renderer.hideOutsideFOV;

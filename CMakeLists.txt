@@ -63,6 +63,9 @@ target_compile_definitions(KyberPlanet PRIVATE
     NOMINMAX
     _WIN32_WINNT=0x0601
     WIN32_LEAN_AND_MEAN
+    TRACY_ENABLE
+    TRACY_ON_DEMAND
+    TRACY_CALLSTACK=8 # TRACY_NO_SYSTEM_TRACING
 )
 
 # ── DirectX 11 + Win32 libs ───────────────────────────────────────────────────
@@ -73,21 +76,44 @@ target_link_libraries(KyberPlanet PRIVATE
     dwmapi
 )
 
+add_library(TracyClient tracy/public/TracyClient.cpp)
+target_include_directories(TracyClient PUBLIC tracy/public)
+target_compile_definitions(TracyClient PUBLIC
+        TRACY_ENABLE
+        TRACY_ON_DEMAND
+        TRACY_CALLSTACK=8 # TRACY_NO_SYSTEM_TRACING
+)
+target_link_libraries(TracyClient PUBLIC ws2_32 dbghelp secur32)
+
+target_link_libraries(KyberPlanet PRIVATE TracyClient)
+
+
 if(MINGW)
     target_link_libraries(KyberPlanet PRIVATE dxguid uuid)
+    target_link_options(KyberPlanet PRIVATE -static-libgcc -static-libstdc++ -static)
 endif()
 
 # ── Compiler flags ────────────────────────────────────────────────────────────
 if(MSVC)
     target_compile_options(KyberPlanet PRIVATE
-        $<$<CONFIG:Release>:/O2 /fp:fast>
-        $<$<CONFIG:Debug>:/W4 /WX->
+            /W4
+            /WX-
+            $<$<CONFIG:Release>:/O2 /fp:fast /Zi /Gy /Oy-> # Added /Oy- (Disable Frame Pointer Omission)
+            $<$<CONFIG:Debug>:/Zi /Ob0 /Od /RTC1>
     )
+    # Required to emit the PDB file in Release and enable profiling
+    target_link_options(KyberPlanet PRIVATE
+            $<$<CONFIG:Release>:/DEBUG /OPT:REF /OPT:ICF>
+            $<$<CONFIG:Debug>:/DEBUG>
+    )
+
+    # Apply the same logic to TracyClient so it has proper symbols
+    target_compile_options(TracyClient PRIVATE /Zi /Oy-)
 else()
     # GCC / MinGW (CLion default)
     target_compile_options(KyberPlanet PRIVATE
         -Wall
-        $<$<CONFIG:Release>:-O2 -ffast-math>
+        $<$<CONFIG:Release>:-O3 -march=native -ffast-math -g -fno-omit-frame-pointer>
         $<$<CONFIG:Debug>:-g -Og>
     )
 endif()

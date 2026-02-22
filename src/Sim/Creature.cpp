@@ -1,8 +1,11 @@
 #include "Creature.hpp"
+
+#include "tracy/Tracy.hpp"
 #include "World/World.hpp"
 #include "World/World_Planet.hpp"
 
 float Creature::tick(float dt, World& world) {
+    ZoneScoped;
     if (!alive) return 0.f;
 
     age += dt;

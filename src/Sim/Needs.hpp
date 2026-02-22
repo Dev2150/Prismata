@@ -115,10 +115,9 @@ struct Needs {
         return best;
     }
 
-    // Returns true if the creature is in crisis for a given drive (level > 85%).
     // Used to trigger death (e.g. critical Thirst → die).
     bool isCritical(Drive d) const {
-        return level[static_cast<int>(d)] > 0.85f;
+        return level[static_cast<int>(d)] >= 1.0f;
     }
 
     // Urgency of the currently active drive in [0,1].

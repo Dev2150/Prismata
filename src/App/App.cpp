@@ -1,3 +1,4 @@
+#include <tracy/Tracy.hpp>
 #include "imgui.hpp"
 #include "imgui_impl_win32.hpp"
 #include "imgui_impl_dx11.hpp"
@@ -19,6 +20,7 @@ float displayUPS     = 0.f;
 
 int RunApplication()
 {
+    ZoneScoped;
     // Make the process DPI-aware so the window and fonts render sharply on
     // high-DPI monitors. Must be called before any window is created.
     ImGui_ImplWin32_EnableDpiAwareness();
@@ -326,6 +328,7 @@ int RunApplication()
         // we store that and skip rendering next frame until it's uncovered.
         HRESULT hr = g_pSwapChain->Present(1, 0);
         g_SwapChainOccluded = (hr == DXGI_STATUS_OCCLUDED);
+        FrameMark;
     }
 
     // ── Shutdown ──────────────────────────────────────────────────────────────

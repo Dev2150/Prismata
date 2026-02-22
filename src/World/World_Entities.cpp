@@ -2,6 +2,7 @@
 #include "World.hpp"
 #include "World_Planet.hpp"
 #include "Sim/Creature.hpp"
+#include "tracy/Tracy.hpp"
 
 // ── Entity management ─────────────────────────────────────────────────────────
 Creature& World::spawnCreature(const Genome& g, const Vec3& pos,
@@ -49,6 +50,7 @@ void World::removeDeadCreatures() {
 // This turns O(n²) pair-wise distance checks into O(n × k) where k is the
 // average number of creatures per query region — typically much smaller than n.
 void World::rebuildSpatialHash() {
+    ZoneScoped;
     spatialHash.cells.clear();
     for (const auto& c : creatures) {
         if (!c.alive) continue;
@@ -101,6 +103,7 @@ EntityID World::findRandomLivingCreature() const {
 // ── Plant growth ──────────────────────────────────────────────────────────────
 void World::growPlants(float dt) {
     // Regrow eaten (dead) plants after a fixed 30-second timer
+    ZoneScoped;
     for (auto& p : plants) {
         if (p.alive) continue;
         p.growTimer += dt;

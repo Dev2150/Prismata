@@ -1,9 +1,11 @@
 #include "World.hpp"
 #include "World_Planet.hpp"
+#include "tracy/Tracy.hpp"
 
 // ── Reproduction ──────────────────────────────────────────────────────────────
 void World::handleReproduction(float dt) {
-    // Phase 1: advance gestation timers; spawn offspring when timer expires
+    // Advance gestation timers; spawn offspring when timer expires
+    ZoneScoped;
     for (auto& c : creatures) {
         if (!c.alive || c.behavior != BehaviorState::Mating) continue;
         c.gestTimer -= dt;
@@ -37,7 +39,7 @@ void World::handleReproduction(float dt) {
         }
     }
 
-    // Phase 2: initiate new mating pairs from willing, adjacent creatures.
+    // Initiate new mating pairs from willing, adjacent creatures.
     // Conditions: libido > 0.7, a mate is visible and within 1.5 m, same species.
     for (auto& c : creatures) {
         if (!c.alive) continue;
@@ -64,6 +66,7 @@ void World::handleReproduction(float dt) {
 
 // ── Main tick ─────────────────────────────────────────────────────────────────
 void World::tick(float dt) {
+    ZoneScoped;
     if (cfg.paused) return;
     dt *= cfg.simSpeed;   // apply time-scale multiplier
 

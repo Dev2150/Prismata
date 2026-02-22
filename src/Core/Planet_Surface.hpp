@@ -53,7 +53,8 @@ struct PlanetSurface {
 
     // Is this surface point below sea level?
     bool isOcean(Vec3 worldPos) const {
-        return noiseHeight(worldPos) < seaLevel;
+        Vec3 d = (worldPos - center).normalised();
+        return isOceanFast(d.x, d.y, d.z);  // 4X faster
     }
 
     // ── Terrain queries (sphere-surface analogues of flat-world methods) ───────
@@ -121,7 +122,7 @@ struct PlanetSurface {
                    n.z*t1.x - n.x*t1.z,
                    n.x*t1.y - n.y*t1.x};
 
-        const float step  = 4.f;
+        const float step  = 10.f;
         int         steps = (int)(searchRadius / step) + 1;
         float       bestD = 1e9f;
         bool        found = false;

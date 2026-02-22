@@ -183,3 +183,9 @@ inline float sampleHeight(float dx, float dy, float dz,
 }
 
 } // namespace PlanetNoise
+
+inline bool isOceanFast(float dx, float dy, float dz) {
+    float raw = PlanetNoise::fbm(dx, dy, dz, 2, 0.35f, 0.5f, 2.f);  // 2 octaves, not 4
+    raw = (raw - (-0.1f)) / 0.4f;
+    return raw < 0.1f;   // below coastline threshold
+}

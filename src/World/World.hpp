@@ -90,6 +90,8 @@ struct World {
         }
     }
 
+    std::vector<Vec3> cachedOceanPoints;
+
     // ── Planet-surface 3D spatial queries ─────────────────────────────────────
     float slopeAt3D(const Vec3& worldPos) const;
     Vec3  normalAt (const Vec3& worldPos) const;

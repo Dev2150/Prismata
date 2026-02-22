@@ -94,11 +94,14 @@ void World::perceive(Creature& c) {
         // Water search: only run if no water has been cached within range yet
         c.waterCacheTimer -= 1.f / 60.f;
         if (c.nearestWaterDist > range || c.waterCacheTimer <= 0.f) {
-            Vec3 wp;
-            if (g_planet_surface.findOcean(c.pos, range, wp)) {
-                c.nearestWaterDist = dist(c.pos, wp);
-                c.nearestWater     = wp;
-                c.waterCacheTimer  = 5.f;   // only re-search every 5 sim-seconds
+            float bestDist = range;
+            for (const Vec3& oceanPt : cachedOceanPoints) {
+                float dist = (oceanPt - c.pos).len();
+                if (dist < bestDist) {
+                    bestDist          = dist;
+                    c.nearestWater = oceanPt;
+                    c.nearestWaterDist = dist;
+                }
             }
         }
     }

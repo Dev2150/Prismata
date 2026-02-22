@@ -70,6 +70,7 @@ struct Creature {
     float    nearestFoodDist = 1e9f;
     Vec3     nearestWater    {};        // Position of nearest water tile
     float    nearestWaterDist= 1e9f;
+    float    waterCacheTimer = 0.f;
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
     // Called once after the genome is set to derive all genome-dependent stats.

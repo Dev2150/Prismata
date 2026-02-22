@@ -24,6 +24,7 @@ struct PlanetSurface {
     Vec3 surfacePos(Vec3 dir) const {
         dir = dir.normalised();
         float h = PlanetNoise::sampleHeight(dir.x, dir.y, dir.z, heightScale);
+        h = std::max(h, 0.0f); // Clamp to sea level
         float r = radius + h;
         return {center.x + dir.x * r,
                 center.y + dir.y * r,
@@ -34,6 +35,14 @@ struct PlanetSurface {
     Vec3 normalAt(Vec3 worldPos) const {
         return (worldPos - center).normalised();
     }
+
+    // Noise-based height above the sphere's base radius (negative = below).
+    float noiseHeight(Vec3 worldPos) const {
+        Vec3 d = (worldPos - center).normalised();
+        float h = PlanetNoise::sampleHeight(d.x, d.y, d.z, heightScale);
+        return std::max(h, 0.0f); // Clamp to sea level
+    }
+
 
     // Snap a world-space position back onto the displaced sphere surface.
     Vec3 snapToSurface(Vec3 worldPos) const {

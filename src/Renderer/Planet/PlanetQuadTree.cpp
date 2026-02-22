@@ -41,6 +41,7 @@ static float sampleH(int face, float u, float v, const PlanetConfig& cfg) {
 static Vec3 surfacePos(int face, float u, float v, const PlanetConfig& cfg) {
     Vec3 dir = faceUVtoDir(face, u, v);
     float h  = PlanetNoise::sampleHeight(dir.x, dir.y, dir.z, cfg.heightScale);
+    h = std::max(h, 0.0f); // Clamp to sea level for a flat water surface
     float r  = cfg.radius + h;
     return {
         cfg.center.x + dir.x * r,

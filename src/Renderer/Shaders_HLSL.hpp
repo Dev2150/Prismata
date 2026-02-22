@@ -18,6 +18,7 @@ cbuffer FrameConstants : register(b0) {
     float4   fowFacing;
     float4   sunColor;
     float4   ambientColor;
+    float4   planetCenter;
 };
 
 struct VIn {
@@ -101,8 +102,10 @@ cbuffer FrameConstants : register(b0) {
     float4   camPos;
     float4   lightDir;
     float4   fowData;
+    float4   fowFacing;
     float4   sunColor;
     float4   ambientColor;  // w = simTime in seconds (used for water wave animation)
+    float4   planetCenter;
 };
 struct VIn  { float3 pos : POSITION; };
 struct VOut { float4 sv  : SV_POSITION; float3 wpos : TEXCOORD0; };

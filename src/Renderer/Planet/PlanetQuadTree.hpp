@@ -27,11 +27,12 @@
 #include <vector>
 #include <d3d11.h>
 #include "Core/Math.hpp"
+#include "Core/Planet_Surface.hpp"
 
 // ── PlanetConfig ──────────────────────────────────────────────────────────────
 struct PlanetConfig {
-    float    radius          = 1000.f;   // sphere radius (world units)
-    Vec3     center          = {};       // world-space centre of the planet
+    float    radius          = PLANET_RADIUS;   // sphere radius (world units)
+    Vec3     center          = {0.f, PLANET_CENTER_Y, 0.f};       // world-space centre of the planet
 
     // LOD parameters
     int      maxDepth        = 18;       // deepest allowed subdivision level
@@ -44,7 +45,7 @@ struct PlanetConfig {
     int      patchRes        = 17;
 
     // Terrain noise
-    float    heightScale     = 100.f;   // max displacement from sphere surface
+    float    heightScale     = PLANET_HEIGHT_SCALE;   // max displacement from sphere surface
     float    noiseFrequency  = 1.f;     // base noise frequency (world-space scale)
     int      noiseOctaves    = 8;
     float    noisePersist    = 0.5f;

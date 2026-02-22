@@ -38,9 +38,6 @@ bool PlanetRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* c,
     ctx    = c;
     cfg    = config;
 
-    // Seed the 3D noise (uses planet seed derived from cfg)
-    PlanetNoise::init(42ULL);
-
     // Build the quadtree (allocates 6 root nodes, no GPU buffers yet)
     tree = new PlanetQuadTree(cfg);
 
@@ -292,6 +289,11 @@ void PlanetRenderer::uploadFrameConstants(const World& world, const Renderer& re
     fc->ambientColor[2] = 0.08f;
     fc->ambientColor[3] = world.simTime;
 
+    fc->planetCenter[0] = cfg.center.x;
+    fc->planetCenter[1] = cfg.center.y;
+    fc->planetCenter[2] = cfg.center.z;
+    fc->planetCenter[3] = cfg.radius;
+
     if (rend.showFogOfWar && rend.playerID != INVALID_ID) {
         auto it = world.idToIndex.find(rend.playerID);
         if (it != world.idToIndex.end()) {
@@ -316,26 +318,9 @@ void PlanetRenderer::uploadFrameConstants(const World& world, const Renderer& re
 
 // ── uploadPlanetConstants ─────────────────────────────────────────────────────
 void PlanetRenderer::uploadPlanetConstants(float timeOfDay) {
-    const float PI    = 3.14159265f;
-    float phase       = timeOfDay * 2.f * PI;
-    float elevation   = -std::cos(phase);   // [-1, 1], positive = sun above horizon
-
-    // Sun direction FROM the scene TOWARD the sun = -lightDir (normalised)
-    float ldx = std::sin(phase) * 0.6f;
-    float ldy = -elevation;
-    float ldz = 0.3f;
-    float ll  = std::sqrt(ldx*ldx + ldy*ldy + ldz*ldz);
-    if (ll > 1e-6f) { ldx/=ll; ldy/=ll; ldz/=ll; }
-    float sdx = -ldx, sdy = -ldy, sdz = -ldz;  // scene→sun
-
     D3D11_MAPPED_SUBRESOURCE ms{};
     ctx->Map(cbPlanet, 0, D3D11_MAP_WRITE_DISCARD, 0, &ms);
     auto* pc = (PlanetConstants*)ms.pData;
-
-    pc->planetCenter[0] = cfg.center.x;
-    pc->planetCenter[1] = cfg.center.y;
-    pc->planetCenter[2] = cfg.center.z;
-    pc->planetCenter[3] = cfg.radius;
 
     // Atmosphere: pale blue tint, thickness ~8% of planet radius
     pc->atmosphereColor[0] = 0.35f;
@@ -347,11 +332,6 @@ void PlanetRenderer::uploadPlanetConstants(float timeOfDay) {
     pc->planetParams[1] = cfg.snowLine;
     pc->planetParams[2] = 0.f;
     pc->planetParams[3] = 0.f;
-
-    pc->sunInfo[0] = sdx;
-    pc->sunInfo[1] = sdy;
-    pc->sunInfo[2] = sdz;
-    pc->sunInfo[3] = elevation;   // [-1, 1]
 
     ctx->Unmap(cbPlanet, 0);
 

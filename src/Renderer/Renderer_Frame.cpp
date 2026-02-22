@@ -92,6 +92,11 @@ void Renderer::updateFrameConstants(const World& world, float aspect) {
     // WaterVSMain reads ambientColor.w to phase the sine waves each frame.
     fc->ambientColor[3] = world.simTime;
 
+    fc->planetCenter[0] = g_planet_surface.center.x;
+    fc->planetCenter[1] = g_planet_surface.center.y;
+    fc->planetCenter[2] = g_planet_surface.center.z;
+    fc->planetCenter[3] = g_planet_surface.radius;
+
     // ── Fog of war ────────────────────────────────────────────────────────────
     // w component acts as enable flag (0 = disabled, >0 = radius)
     if (showFogOfWar && playerID != INVALID_ID) {

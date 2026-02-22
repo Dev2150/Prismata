@@ -12,10 +12,15 @@
 #include "Renderer/Planet/PlanetNoise.hpp"
 #include <cmath>
 
+// ── Centralized Planet Constants ──────────────────────────────────────────────
+constexpr float PLANET_RADIUS       = 100000.f;
+constexpr float PLANET_CENTER_Y     = -180000.f;
+constexpr float PLANET_HEIGHT_SCALE = 20000.f;
+
 struct PlanetSurface {
-    Vec3  center      = {0.f, -1800.f, 0.f};
-    float radius      = 1000.f;
-    float heightScale = 120.f;
+    Vec3  center      = {0.f, PLANET_CENTER_Y, 0.f};
+    float radius      = PLANET_RADIUS;
+    float heightScale = PLANET_HEIGHT_SCALE;
     float seaLevel    = 0.f;   // noise height below this = ocean
 
     // ── Geometry ──────────────────────────────────────────────────────────────

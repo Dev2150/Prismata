@@ -77,10 +77,8 @@ struct PlanetRenderer {
     // ── Per-frame constant buffer layout ─────────────────────────────────────
     // Must be 16-byte aligned; matches HLSL cbuffer PlanetConstants : register(b1)
     struct alignas(16) PlanetConstants {
-        float planetCenter[4];    // xyz = centre, w = radius
         float atmosphereColor[4]; // rgb = atmosphere tint, w = thickness
         float planetParams[4];    // x = seaLevel, y = snowLine, zw unused
-        float sunInfo[4];          // xyz = scene→sun unit vector, w = elevation [-1,1]
     };
 
     // ── Shared frame constants (identical to Renderer::FrameConstants) ────────
@@ -94,6 +92,7 @@ struct PlanetRenderer {
         float fowFacing[4];
         float sunColor[4];
         float ambientColor[4];
+        float planetCenter[4];
     };
 
     // ── Public API ────────────────────────────────────────────────────────────

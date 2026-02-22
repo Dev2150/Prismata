@@ -108,7 +108,8 @@ struct Renderer {
     ID3D11DepthStencilState* dssDepth           = nullptr;
     ID3D11DepthStencilState* dssNoDepthWrite    = nullptr;  // depth test ON, write OFF (water)
     ID3D11BlendState*        bsAlpha            = nullptr;
-    int MAX_CREATURES = 4096;
+
+    static constexpr int MAX_CREATURES = 4096;
 
     // ── Depth buffer ──────────────────────────────────────────────────────────
     ID3D11Texture2D*        depthTex = nullptr;
@@ -145,6 +146,7 @@ struct Renderer {
         float fowFacing[4];     // 16 bytes - fog of war: xyz=facing dir, w=cos(FOV/2)
         float sunColor[4];      // 16 bytes – rgb=sun light tint, w=timeOfDay [0,1]
         float ambientColor[4];  // 16 bytes – rgb=sky/ambient light, w=simTime (seconds)
+        float planetCenter[4];  // 16 bytes - xyz=planet center, w=planet radius
     };
 
     // ── Vertex layouts ─────────────────────────────────────────────────────────

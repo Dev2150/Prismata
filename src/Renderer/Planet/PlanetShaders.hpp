@@ -28,11 +28,11 @@ cbuffer FrameConstants : register(b0) {
     float4   fowFacing;
     float4   sunColor;      // rgb=sun tint, w=timeOfDay [0,1]
     float4   ambientColor;  // rgb=sky/ambient, w=simTime
+    float4   planetCenter;  // xyz = world-space planet centre, w = radius
 };
 
 // ── Planet-specific per-draw constants ────────────────────────────────────────
 cbuffer PlanetConstants : register(b1) {
-    float4 planetCenter;   // xyz = world-space planet centre, w = radius
     float4 atmosphereColor;// rgb = atmosphere tint, w = atmosphere thickness (world units)
     float4 planetParams;   // x = seaLevel (world Y), y = snowLine fraction, zw = unused
     float4 sunInfo;         // xyz = unit vector scene→sun, w = elevation [-1..1]
@@ -171,12 +171,13 @@ cbuffer FrameConstants : register(b0) {
     float4   camPos;
     float4   lightDir;
     float4   fowData;
+    float4   fowFacing;
     float4   sunColor;
     float4   ambientColor;
+    float4   planetCenter;
 };
 
 cbuffer PlanetConstants : register(b1) {
-    float4 planetCenter;
     float4 atmosphereColor;
     float4 planetParams;
     float4 sunInfo;
@@ -238,14 +239,15 @@ cbuffer FrameConstants : register(b0) {
     float4   camPos;
     float4   lightDir;
     float4   fowData;
+    float4   fowFacing;
     float4   sunColor;
     float4   ambientColor;
+    float4   planetCenter;
 };
+
 cbuffer PlanetConstants : register(b1) {
-    float4 planetCenter;
     float4 atmosphereColor;
     float4 planetParams;
-    float4 sunInfo;   // xyz = scene->sun direction (unit), w = planet-relative elevation [-1,1]
 };
 
 struct SVIn  { float2 quadPos : POSITION; };
@@ -259,7 +261,8 @@ SVOut SunVS(SVIn v) {
     static const float SUN_DIST = 500000.0f;
     static const float SUN_SIZE = 160000.0f;   // world-unit radius of the billboard
 
-    float3 sunDir    = normalize(sunInfo.xyz);           // scene→sun
+    // USE lightDir INSTEAD OF sunInfo! (lightDir points FROM sun, so it's negated)
+    float3 sunDir    = normalize(-lightDir.xyz);         // scene→sun
     float3 sunCenter = camPos.xyz + sunDir * SUN_DIST;
 
     // Camera-facing billboard frame

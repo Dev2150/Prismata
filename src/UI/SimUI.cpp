@@ -345,7 +345,7 @@ void SimUI::drawSimControls(World& world, Renderer& rend) {
     ImGui::SliderFloat("Mutation Scale",&world.cfg.mutationRateScale, 0.1f, 5.f);
     ImGui::SliderFloat("Species Epsilon", &world.cfg.speciesEpsilon,    0.05f, 0.5f);
     ImGui::SliderFloat("Plant Grow Rate",&world.cfg.plantGrowRate,   0.f, 5.f);
-    ImGui::SliderInt  ("Max Population",&world.cfg.maxPopulation, 100, 4096);
+    ImGui::SliderInt  ("Max Population",&world.cfg.maxPopulation, 100, Renderer::MAX_CREATURES);
 
     ImGui::Separator();
     ImGui::Text("Camera");
@@ -718,7 +718,7 @@ void SimUI::drawSettingsWindow(World& world, Renderer& rend) {
                           "than this from all species centroids\n"
                           "will trigger a speciation event (100%%).");
     ImGui::SliderFloat("Plant Grow Rate##s",    &world.cfg.plantGrowRate,      0.f,   5.f);
-    ImGui::SliderInt  ("Max Population##s",     &world.cfg.maxPopulation,      100, 5000);
+    ImGui::SliderInt  ("Max Population##s",     &world.cfg.maxPopulation,      100, Renderer::MAX_CREATURES);
 
     ImGui::SeparatorText("Camera");
     ImGui::SliderFloat("FOV##s",             &rend.camera.fovY,                30.f, 120.f);

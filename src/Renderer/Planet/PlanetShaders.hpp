@@ -343,44 +343,67 @@ VOut StarVS(VIn v) {
     // gives a clean uniform distribution over the full sky.
     float3 dir = normalize(v.pos - planetCenter.xyz);
 
-    // Place the star shell centred on the camera so it never moves with the player.
-    float3 wpos = camPos.xyz + dir * 500000.0f;
-    o.sv = mul(float4(wpos, 1.0f), viewProj);
-    o.sv.z = o.sv.w * 0.9999f;   // always behind everything
+    // Project direction directly to clip space (ignoring translation by using w=0.0)
+    // This completely eliminates floating-point precision jitter when moving.
+    float4 clipPos = mul(float4(dir, 0.0f), viewProj);
+
+    // Push to the far clip plane
+    clipPos.z = clipPos.w; // * 0.9999f;
+
+    o.sv = clipPos;
     o.dir  = dir;
     return o;
 }
 
-float hash(float3 p) {
-    p = frac(p * float3(0.1031f, 0.1030f, 0.0973f));
-    p += dot(p, p.yxz + 33.33f);
-    return frac((p.x + p.y) * p.z);
+// 3D Hash function for grid cells
+float3 hash3(float3 p) {
+    float3 q = float3(
+        dot(p, float3(127.1f, 311.7f, 74.7f)),
+        dot(p, float3(269.5f, 183.3f, 246.1f)),
+        dot(p, float3(113.5f, 271.9f, 124.6f))
+    );
+    return frac(sin(q) * 43758.5453f);
 }
 
 float4 StarPS(VOut v) : SV_TARGET {
     float3 dir = normalize(v.dir);
 
-    // Star density: only the top ~1% of hash values become visible stars.
-    float h    = hash(dir * 800.0f);
-    float star = smoothstep(0.990f, 1.0f, h);
+    // Map the direction to a 3D grid to prevent aliasing/teleporting when rotating
+    float3 p = dir * 400.0f;
+    float3 cell = floor(p);
+    float3 local = frac(p) - 0.5f;
+
+    float3 h3 = hash3(cell);
+
+    float star = 0.0f;
+    // Only ~2% of grid cells contain a star
+    if (h3.x > 0.98f) {
+        // Offset the star slightly from the cell center
+        float3 offset = (h3 - 0.5f) * 0.4f;
+        float d = length(local - offset);
+        // Draw a smooth, anti-aliased dot
+        star = smoothstep(0.15f, 0.02f, d);
+    }
     
     // Twinkling: unique phase per star, driven by simTime.
-    // Using a slow speed (2.5) so it feels like real starlight shimmer.
     float time    = ambientColor.w * 2.5f;
-    float phase   = hash(dir * 137.5f) * 6.2831853f;
+    float phase   = h3.y * 6.2831853f;
     float twinkle = sin(time + phase) * 0.5f + 0.5f;
     star *= 0.25f + 0.75f * twinkle;
     
-    // Day/night fade. sunColor.w = timeOfDay in [0,1].
-    // elev = +1 at noon (t=0.5), -1 at midnight (t=0 or 1).
-    float elev        = -cos(sunColor.w * 6.2831853f);
-    // Fully visible when elev < -0.15 (sun well below horizon); zero when elev > 0.15.
-    float nightFactor = smoothstep(0.15f, -0.15f, elev);
+    // Day/night fade based on LOCAL sun elevation (camera's position on the planet)
+    float3 L = normalize(-lightDir.xyz);
+    float3 camNormal = normalize(camPos.xyz - planetCenter.xyz);
+    float sunElev = dot(camNormal, L);
+
+    // Fully visible when sunElev < -0.1 (sun below local horizon)
+    // Invisible when sunElev > 0.1 (sun above local horizon)
+    float nightFactor = smoothstep(0.1f, -0.1f, sunElev);
     
     // Subtle colour tint per star (blue-white to warm white).
     float3 tint = lerp(float3(0.75f, 0.88f, 1.0f),
                        float3(1.0f,  0.92f, 0.80f),
-                       hash(dir * 213.7f));
+                       h3.z);
 
     float brightness = star * nightFactor;
     return float4(tint * brightness, brightness);

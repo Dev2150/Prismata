@@ -8,7 +8,7 @@
 // ── D3D11 globals ─────────────────────────────────────────────────────────────
 // Kept as file-scope statics so helper functions (CreateDeviceD3D, WndProc, etc.)
 // can access them without passing them around everywhere.
-ID3D11Device*           g_pd3dDevice          = nullptr;  // logical GPU interface; used to create resources (buffers, shaders, states)
+ID3D11Device*           g_pd3dDevice           = nullptr;  // logical GPU interface; used to create resources (buffers, shaders, states)
 ID3D11DeviceContext*    g_pd3dDeviceContext    = nullptr;  // records and submits draw calls / state changes
 IDXGISwapChain*         g_pSwapChain           = nullptr;  // manages front/back buffers and Present()
 bool                    g_SwapChainOccluded    = false;    // true when the window is minimised/covered; we skip rendering

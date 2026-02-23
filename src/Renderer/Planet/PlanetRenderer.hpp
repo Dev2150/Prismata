@@ -26,50 +26,50 @@
 
 struct PlanetRenderer {
     // ── D3D11 resources ───────────────────────────────────────────────────────
-    ID3D11Device*        device = nullptr;
-    ID3D11DeviceContext* ctx    = nullptr;
+    ComPtr<ID3D11Device> device;
+    ComPtr<ID3D11DeviceContext> ctx;
 
     // Shaders
-    ID3D11VertexShader*  terrainVS  = nullptr;
-    ID3D11PixelShader*   terrainPS  = nullptr;
-    ID3D11VertexShader*  atmoVS     = nullptr;
-    ID3D11PixelShader*   atmoPS     = nullptr;
+    ComPtr<ID3D11VertexShader> terrainVS;
+    ComPtr<ID3D11PixelShader> terrainPS;
+    ComPtr<ID3D11VertexShader> atmoVS;
+    ComPtr<ID3D11PixelShader> atmoPS;
 
     // Input layout (matches PlanetVertex struct)
-    ID3D11InputLayout*   layout     = nullptr;
+    ComPtr<ID3D11InputLayout> layout;
 
     // Sun shaders + resources
-    ID3D11VertexShader*  sunVS      = nullptr;
-    ID3D11PixelShader*   sunPS      = nullptr;
-    ID3D11InputLayout*   sunLayout  = nullptr;
-    ID3D11Buffer*        sunQuadVB  = nullptr; // 4 corners of a unit quad
+    ComPtr<ID3D11VertexShader> sunVS;
+    ComPtr<ID3D11PixelShader> sunPS;
+    ComPtr<ID3D11InputLayout> sunLayout;
+    ComPtr<ID3D11Buffer> sunQuadVB; // 4 corners of a unit quad
 
     // Constant buffers
-    ID3D11Buffer*        cbFrame    = nullptr;   // shared layout with world renderer
-    ID3D11Buffer*        cbPlanet   = nullptr;   // planet-specific per-draw data
+    ComPtr<ID3D11Buffer> cbFrame; // shared layout with world renderer
+    ComPtr<ID3D11Buffer> cbPlanet; // planet-specific per-draw data
 
     // Atmosphere shell: a slightly inflated sphere mesh
-    ID3D11Buffer*        atmoVB     = nullptr;
-    ID3D11Buffer*        atmoIB     = nullptr;
+    ComPtr<ID3D11Buffer> atmoVB;
+    ComPtr<ID3D11Buffer> atmoIB;
     int                  atmoIdxCount = 0;
 
     // Render states
-    ID3D11RasterizerState*   rsSolid     = nullptr;
-    ID3D11RasterizerState*   rsSolidNoCull = nullptr;  // atmosphere (no back-face cull)
-    ID3D11DepthStencilState* dssDepth    = nullptr;
-    ID3D11DepthStencilState* dssNoWrite    = nullptr;   // depth test, no write (atmo)
-    ID3D11DepthStencilState* dssNoDepth    = nullptr;   // no depth test, no write (sun)
-    ID3D11BlendState*        bsAlpha       = nullptr;
-    ID3D11BlendState*        bsAdditive    = nullptr;   // additive blend for sun glow
-    ID3D11BlendState*        bsOpaque    = nullptr;
+    ComPtr<ID3D11RasterizerState> rsSolid;
+    ComPtr<ID3D11RasterizerState> rsSolidNoCull; // atmosphere (no back-face cull)
+    ComPtr<ID3D11DepthStencilState> dssDepth;
+    ComPtr<ID3D11DepthStencilState> dssNoWrite; // depth test, no write (atmo)
+    ComPtr<ID3D11DepthStencilState> dssNoDepth; // no depth test, no write (sun)
+    ComPtr<ID3D11BlendState> bsAlpha;
+    ComPtr<ID3D11BlendState> bsAdditive; // additive blend for sun glow
+    ComPtr<ID3D11BlendState> bsOpaque;
 
     // ── Quadtree ──────────────────────────────────────────────────────────────
     PlanetConfig              cfg;
-    PlanetQuadTree*           tree    = nullptr;
+    PlanetQuadTree* tree = nullptr;
 
     // ── Debug / UI state ──────────────────────────────────────────────────────
     bool  showAtmosphere = true;
-    bool showSun        = true;
+    bool  showSun        = true;
     bool  wireframe      = false;
     int   totalNodes     = 0;
     int   totalLeaves    = 0;
@@ -128,8 +128,6 @@ private:
     void renderAtmosphere(const Camera& cam);
     void renderSun();
 
-    template<typename T>
-    static void safeRelease(T*& p) { if (p) { p->Release(); p = nullptr; } }
 };
 
 // ── Global instance (declared in PlanetRenderer.cpp, extern here) ─────────────

@@ -81,30 +81,39 @@ void Renderer::renderFOVCone(const World& world) {
         verts.push_back({p1.x,  p1.y,  p1.z });
     }
 
+    if (!ctx.Get()) {
+        OutputDebugStringA("CRASH IMMINENT: ctx is null in updateFrameConstants\n");
+        return;
+    }
+    if (!fovConeVB.Get()) {
+        OutputDebugStringA("CRASH IMMINENT: fovConeVB is null — createBuffers failed or was never called\n");
+        return;
+    }
+
     // Upload CPU-built vertices to the dynamic GPU buffer
     D3D11_MAPPED_SUBRESOURCE ms{};
-    ctx->Map(fovConeVB, 0, D3D11_MAP_WRITE_DISCARD, 0, &ms);
+    ctx->Map(fovConeVB.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &ms);
     memcpy(ms.pData, verts.data(),
            std::min(verts.size() * sizeof(SimpleVertex),
                     (size_t)(FOV_CONE_MAX_VERTS * sizeof(SimpleVertex))));
-    ctx->Unmap(fovConeVB, 0);
+    ctx->Unmap(fovConeVB.Get(), 0);
 
     // rsSolidNoCull: cone must be visible from below (no back-face culling)
-    ctx->RSSetState(rsSolidNoCull);
-    ctx->IASetInputLayout(simpleLayout);
+    ctx->RSSetState(rsSolidNoCull.Get());
+    ctx->IASetInputLayout(simpleLayout.Get());
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    ctx->VSSetShader(simpleVS, nullptr, 0);
-    ctx->PSSetShader(fovPS,    nullptr, 0);
+    ctx->VSSetShader(simpleVS.Get(), nullptr, 0);
+    ctx->PSSetShader(fovPS.Get(),    nullptr, 0);
 
     float bf[4] = {};
-    ctx->OMSetBlendState(bsAlpha, bf, 0xFFFFFFFF);
-    ctx->OMSetDepthStencilState(dssNoDepthWrite, 0);  // overlay — no depth write
+    ctx->OMSetBlendState(bsAlpha.Get(), bf, 0xFFFFFFFF);
+    ctx->OMSetDepthStencilState(dssNoDepthWrite.Get(), 0);  // overlay — no depth write
 
     UINT stride = sizeof(SimpleVertex), offset = 0;
-    ctx->IASetVertexBuffers(0, 1, &fovConeVB, &stride, &offset);
+    ctx->IASetVertexBuffers(0, 1, fovConeVB.GetAddressOf(), &stride, &offset);
     ctx->Draw((UINT)verts.size(), 0);
 
     ctx->OMSetBlendState(nullptr, bf, 0xFFFFFFFF);
-    ctx->OMSetDepthStencilState(dssDepth, 0);
-    ctx->RSSetState(rsSolid);
+    ctx->OMSetDepthStencilState(dssDepth.Get(), 0);
+    ctx->RSSetState(rsSolid.Get());
 }

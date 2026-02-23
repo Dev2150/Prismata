@@ -46,6 +46,8 @@
 #include <d3d11.h>
 #include "../Core/Math.hpp"
 #include "Sim/Creature.hpp"
+#include <wrl/client.h>
+using Microsoft::WRL::ComPtr;
 
 // ── Camera ────────────────────────────────────────────────────────────────────
 struct Camera {
@@ -78,42 +80,42 @@ struct Camera {
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
 struct Renderer {
-    ID3D11Device*        device = nullptr;
-    ID3D11DeviceContext* ctx    = nullptr;
+    ComPtr<ID3D11Device> device;
+    ComPtr<ID3D11DeviceContext> ctx;
 
     // ── Shaders & layouts ─────────────────────────────────────────────────────
-    ID3D11VertexShader*   terrainVS          = nullptr;
-    ID3D11PixelShader*    terrainPS          = nullptr;
-    ID3D11InputLayout*    terrainLayout = nullptr;
+    ComPtr<ID3D11VertexShader> terrainVS;
+    ComPtr<ID3D11PixelShader> terrainPS;
+    ComPtr<ID3D11InputLayout> terrainLayout;
 
     // ── Creature shaders & layout ─────────────────────────────────────────────
-    ID3D11VertexShader*   creatureVS         = nullptr;
-    ID3D11PixelShader*    creaturePS         = nullptr;
-    ID3D11InputLayout*    creatureLayout     = nullptr;
+    ComPtr<ID3D11VertexShader> creatureVS;
+    ComPtr<ID3D11PixelShader> creaturePS;
+    ComPtr<ID3D11InputLayout> creatureLayout;
 
     // FOV cone shaders (position-only)
-    ID3D11VertexShader*   simpleVS   = nullptr;
-    ID3D11PixelShader*    fovPS      = nullptr;
-    ID3D11InputLayout*    simpleLayout = nullptr;
+    ComPtr<ID3D11VertexShader> simpleVS;
+    ComPtr<ID3D11PixelShader> fovPS;
+    ComPtr<ID3D11InputLayout> simpleLayout;
 
     // ── Buffers ────────────────────────────────────────────────────────────────
-    ID3D11Buffer*         cbFrame            = nullptr;
-    ID3D11Buffer*         creatureInstanceVB = nullptr;
-    ID3D11Buffer*         creatureQuadVB     = nullptr;
-    ID3D11Buffer*         fovConeVB          = nullptr;   // dynamic: updated each frame
+    ComPtr<ID3D11Buffer> cbFrame;
+    ComPtr<ID3D11Buffer> creatureInstanceVB;
+    ComPtr<ID3D11Buffer> creatureQuadVB;
+    ComPtr<ID3D11Buffer> fovConeVB; // dynamic: updated each frame
 
     // ── States ─────────────────────────────────────────────────────────────────
-    ID3D11RasterizerState*   rsSolid            = nullptr;
-    ID3D11RasterizerState*   rsSolidNoCull      = nullptr;  // for FOV cone (double-sided)
-    ID3D11DepthStencilState* dssDepth           = nullptr;
-    ID3D11DepthStencilState* dssNoDepthWrite    = nullptr;  // depth test ON, write OFF (water)
-    ID3D11BlendState*        bsAlpha            = nullptr;
+    ComPtr<ID3D11RasterizerState> rsSolid;
+    ComPtr<ID3D11RasterizerState> rsSolidNoCull; // for FOV cone (double-sided)
+    ComPtr<ID3D11DepthStencilState> dssDepth;
+    ComPtr<ID3D11DepthStencilState> dssNoDepthWrite;
+    ComPtr<ID3D11BlendState> bsAlpha;
 
     static constexpr int MAX_CREATURES = 4096;
 
     // ── Depth buffer ──────────────────────────────────────────────────────────
-    ID3D11Texture2D*        depthTex = nullptr;
-    ID3D11DepthStencilView* depthDSV = nullptr;
+    ComPtr<ID3D11Texture2D> depthTex;
+    ComPtr<ID3D11DepthStencilView> depthDSV;
 
     // ── Camera & rendering state ───────────────────────────────────────────────
     Camera   camera;
@@ -211,7 +213,4 @@ private:
     // Mouse wheel accumulator: positive = scroll up = zoom out (move away from planet)
     float scrollDelta = 0.f;
 
-    template<typename T> static void safeRelease(T*& p) {
-        if (p) { p->Release(); p = nullptr; }
-    }
 };

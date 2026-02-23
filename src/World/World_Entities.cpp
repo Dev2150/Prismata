@@ -51,7 +51,9 @@ void World::removeDeadCreatures() {
 // average number of creatures per query region — typically much smaller than n.
 void World::rebuildSpatialHash() {
     ZoneScoped;
-    spatialHash.cells.clear();
+    for (auto& pair : spatialHash.cells) {
+        pair.second.clear(); // Keeps capacity, zero allocations
+    }
     for (const auto& c : creatures) {
         if (!c.alive) continue;
         // Integer cell address

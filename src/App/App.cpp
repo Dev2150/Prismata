@@ -125,7 +125,7 @@ int RunApplication()
 
     if (!g_planet.init(g_pd3dDevice, g_pd3dDeviceContext, pcfg)) {
         OutputDebugStringA("FATAL: Planet init failed!\n");
-        //TODO: handle error
+        return 1;
     }
 
     // ── Camera: start above the planet surface ────────────────────────────────
@@ -147,6 +147,7 @@ int RunApplication()
     auto lastTime = Clock::now();
     bool done = false;
 
+    // ReSharper disable once CppDFAConstantConditions
     while (!done)
     {
         // ── Drain the Win32 message queue ─────────────────────────────────
@@ -249,10 +250,10 @@ int RunApplication()
         }
 
 
-        g_pd3dDeviceContext->OMSetRenderTargets(1, &g_mainRenderTargetView, g_renderer.depthDSV);
+        g_pd3dDeviceContext->OMSetRenderTargets(1, &g_mainRenderTargetView, g_renderer.depthDSV.Get());
         if (g_renderer.depthDSV)
             g_pd3dDeviceContext->ClearDepthStencilView(
-                g_renderer.depthDSV, D3D11_CLEAR_DEPTH, 1.f, 0);  // 1.0 = far plane (everything fails initially)
+                g_renderer.depthDSV.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);  // 1.0 = far plane (everything fails initially)
 
         // ── Set viewport ───────────────────────────────────────────────────
         // The viewport maps NDC coordinates to pixel coordinates on the back buffer.
@@ -276,7 +277,7 @@ int RunApplication()
         // Clear depth so creatures and FOV cone draw on top of the planet
         if (g_renderer.depthDSV)
             g_pd3dDeviceContext->ClearDepthStencilView(
-                g_renderer.depthDSV, D3D11_CLEAR_DEPTH, 1.f, 0);
+                g_renderer.depthDSV.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
 
         // Creature billboards + FOV cone (Renderer, uses creature positions
         //    which are now 3-D sphere-surface points).

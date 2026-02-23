@@ -192,7 +192,7 @@ private:
     void mergeNode (PlanetNode* node);
     void buildMesh (PlanetNode* node, ID3D11Device* dev);
 
-    void collectLeavesRec(const PlanetNode* n, std::vector<PlanetNode*>& out) const;
+    void collectLeavesRec(PlanetNode* n, std::vector<PlanetNode*>& out) const;
 
     static int countRec(const PlanetNode* n) {
         if (!n) return 0;

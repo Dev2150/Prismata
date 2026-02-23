@@ -10,15 +10,16 @@
 // Compiles an HLSL source string into GPU bytecode (a "blob").
 // entry  = which function in the HLSL is the entry point
 // target = shader stage + version, e.g. "vs_5_0" or "ps_5_0"
-static ID3DBlob* compileShader(const char* src, const char* entry, const char* target) {
-    ID3DBlob* blob = nullptr, *err = nullptr;
+static ComPtr<ID3DBlob> compileShader(const char* src, const char* entry, const char* target) {
+    ComPtr<ID3DBlob> blob;
+    ComPtr<ID3DBlob> err;
     HRESULT hr = D3DCompile(src, strlen(src), nullptr, nullptr, nullptr,
-                            entry, target, D3DCOMPILE_OPTIMIZATION_LEVEL1, 0, &blob, &err);
+                            entry, target, D3DCOMPILE_OPTIMIZATION_LEVEL1, 0,
+                            blob.GetAddressOf(), err.GetAddressOf());
     if (FAILED(hr)) {
-        if (err) { OutputDebugStringA((char*)err->GetBufferPointer()); err->Release(); }
+        if (err) { OutputDebugStringA((char*)err->GetBufferPointer()); }
         return nullptr;
     }
-    if (err) err->Release();
     return blob;
 }
 
@@ -28,8 +29,18 @@ bool Renderer::init(ID3D11Device* dev, ID3D11DeviceContext* c, int w, int h) {
     ctx    = c;
     winW = w; winH = h;
 
-    if (!createShaders())     return false;
-    if (!createBuffers(w, h)) return false;
+    char buf[128];
+    sprintf_s(buf, "Renderer::init device=%p ctx=%p\n", dev, c);
+    OutputDebugStringA(buf);
+
+    if (!createShaders()) {
+        OutputDebugStringA("createShaders FAILED\n");
+        return false;
+    }
+    if (!createBuffers(w, h)) {
+        OutputDebugStringA("createBuffers FAILED\n");
+        return false;
+    }
 
     // ── Rasterizer states ─────────────────────────────────────────────────────
     // Controls how triangles are converted to pixels: filled vs wireframe,
@@ -39,10 +50,10 @@ bool Renderer::init(ID3D11Device* dev, ID3D11DeviceContext* c, int w, int h) {
     rd.DepthClipEnable       = TRUE;
 
     rd.FillMode = D3D11_FILL_SOLID; rd.CullMode = D3D11_CULL_BACK;
-    device->CreateRasterizerState(&rd, &rsSolid);
+    device->CreateRasterizerState(&rd, rsSolid.GetAddressOf());
 
     rd.FillMode = D3D11_FILL_SOLID; rd.CullMode = D3D11_CULL_NONE;  // both sides — for FOV cone
-    device->CreateRasterizerState(&rd, &rsSolidNoCull);
+    device->CreateRasterizerState(&rd, rsSolidNoCull.GetAddressOf());
 
     // ── Depth-stencil states ──────────────────────────────────────────────────
     // The depth buffer tracks "closest drawn pixel" per screen pixel so near
@@ -51,11 +62,11 @@ bool Renderer::init(ID3D11Device* dev, ID3D11DeviceContext* c, int w, int h) {
     dsd.DepthEnable    = TRUE;
     dsd.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
     dsd.DepthFunc      = D3D11_COMPARISON_LESS;
-    device->CreateDepthStencilState(&dsd, &dssDepth);
+    device->CreateDepthStencilState(&dsd, dssDepth.GetAddressOf());
 
     // No depth write: used for FOV cone overlay (depth test ON, write OFF).
     dsd.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
-    device->CreateDepthStencilState(&dsd, &dssNoDepthWrite);
+    device->CreateDepthStencilState(&dsd, dssNoDepthWrite.GetAddressOf());
 
     // ── Alpha blend state ─────────────────────────────────────────────────────
     // output = src.rgb * src.alpha + dst.rgb * (1 - src.alpha)
@@ -70,7 +81,7 @@ bool Renderer::init(ID3D11Device* dev, ID3D11DeviceContext* c, int w, int h) {
     rt.DestBlendAlpha        = D3D11_BLEND_ZERO;
     rt.BlendOpAlpha          = D3D11_BLEND_OP_ADD;
     rt.RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
-    device->CreateBlendState(&bd, &bsAlpha);
+    device->CreateBlendState(&bd, bsAlpha.GetAddressOf());
 
     return true;
 }
@@ -80,11 +91,12 @@ bool Renderer::createShaders() {
     // Two buffer slots:
     //   slot 0: per-vertex quad corners (PER_VERTEX_DATA)
     //   slot 1: per-creature data — pos, yaw, colour, size (PER_INSTANCE_DATA)
-    ID3DBlob* cvs = compileShader(CREATURE_HLSL, "VSMain", "vs_5_0");
-    ID3DBlob* cps = compileShader(CREATURE_HLSL, "PSMain", "ps_5_0");
-    if (!cvs || !cps) { if(cvs)cvs->Release(); if(cps)cps->Release(); return false; }
-    device->CreateVertexShader(cvs->GetBufferPointer(), cvs->GetBufferSize(), nullptr, &creatureVS);
-    device->CreatePixelShader (cps->GetBufferPointer(), cps->GetBufferSize(), nullptr, &creaturePS);
+    auto cvs = compileShader(CREATURE_HLSL, "VSMain", "vs_5_0");
+    auto cps = compileShader(CREATURE_HLSL, "PSMain", "ps_5_0");
+    if (!cvs || !cps) return false;
+
+    device->CreateVertexShader(cvs->GetBufferPointer(), cvs->GetBufferSize(), nullptr, creatureVS.GetAddressOf());
+    device->CreatePixelShader (cps->GetBufferPointer(), cps->GetBufferSize(), nullptr, creaturePS.GetAddressOf());
 
     D3D11_INPUT_ELEMENT_DESC cd[] = {
         {"POSITION",  0, DXGI_FORMAT_R32G32_FLOAT,       0,  0, D3D11_INPUT_PER_VERTEX_DATA,   0},
@@ -94,26 +106,17 @@ bool Renderer::createShaders() {
         {"INST_SIZE", 0, DXGI_FORMAT_R32_FLOAT,          1, 32, D3D11_INPUT_PER_INSTANCE_DATA, 1},
         {"INST_PAD",  0, DXGI_FORMAT_R32G32B32_FLOAT,    1, 36, D3D11_INPUT_PER_INSTANCE_DATA, 1},
     };
-    device->CreateInputLayout(cd, 6, cvs->GetBufferPointer(), cvs->GetBufferSize(), &creatureLayout);
-    cvs->Release(); cps->Release();
+    device->CreateInputLayout(cd, 6, cvs->GetBufferPointer(), cvs->GetBufferSize(), creatureLayout.GetAddressOf());
 
-    // ── Simple / Water / FOV shaders ──────────────────────────────────────────
+    // ── Simple / FOV shaders ──────────────────────────────────────────
     // Compile three distinct shader objects from the same SIMPLE_HLSL source:
     //   simpleVS  – plain passthrough VS → used by the FOV cone
-    //   waterVS   – wave-animated VS     → used by the water plane
-    //   waterPS   – translucent blue PS
     //   fovPS     – translucent yellow PS
-    ID3DBlob* svs = compileShader(SIMPLE_HLSL, "VSMain",  "vs_5_0");
-    ID3DBlob* wvs  = compileShader(SIMPLE_HLSL, "WaterVSMain", "vs_5_0");
-    ID3DBlob* wps = compileShader(SIMPLE_HLSL, "WaterPS", "ps_5_0");
-    ID3DBlob* fps = compileShader(SIMPLE_HLSL, "FovPS",   "ps_5_0");
-    if (!svs || !fps) {
-        if(svs) svs->Release();
-        if(fps) fps->Release();
-        return false;
-    }
-    device->CreateVertexShader(svs->GetBufferPointer(), svs->GetBufferSize(), nullptr, &simpleVS);
-    device->CreatePixelShader (fps->GetBufferPointer(), fps->GetBufferSize(), nullptr, &fovPS);
+    auto svs = compileShader(SIMPLE_HLSL, "VSMain",  "vs_5_0");
+    auto fps = compileShader(SIMPLE_HLSL, "FovPS",   "ps_5_0");
+    if (!svs || !fps) return false;
+    device->CreateVertexShader(svs->GetBufferPointer(), svs->GetBufferSize(), nullptr, simpleVS.GetAddressOf());
+    device->CreatePixelShader (fps->GetBufferPointer(), fps->GetBufferSize(), nullptr, fovPS.GetAddressOf());
 
     // Input layout is the same for all simple variants (position-only)
     D3D11_INPUT_ELEMENT_DESC sd[] = {
@@ -121,14 +124,19 @@ bool Renderer::createShaders() {
     };
     // Use svs bytecode for layout creation (any of the VS blobs would work since
     // they share the same input signature)
-    device->CreateInputLayout(sd, 1, svs->GetBufferPointer(), svs->GetBufferSize(), &simpleLayout);
-    svs->Release(); fps->Release();
+    device->CreateInputLayout(sd, 1, svs->GetBufferPointer(), svs->GetBufferSize(), simpleLayout.GetAddressOf());
 
     return true;
 }
 
 // ── createBuffers ─────────────────────────────────────────────────────────────
 bool Renderer::createBuffers(int w, int h) {
+
+    if (!device.Get()) {
+        OutputDebugStringA("createBuffers: device is NULL!\n");
+        return false;
+    }
+
     D3D11_BUFFER_DESC bd{};
 
     // Per-frame constant buffer: written by CPU every frame, read by both shaders.
@@ -137,10 +145,7 @@ bool Renderer::createBuffers(int w, int h) {
     bd.Usage          = D3D11_USAGE_DYNAMIC;        // CPU writes every frame
     bd.BindFlags      = D3D11_BIND_CONSTANT_BUFFER;
     bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    if (FAILED(device->CreateBuffer(&bd, nullptr, &cbFrame))) {
-        OutputDebugStringA("Error: Failed to create frame constant buffer!\n");
-        return false;
-    }
+    if (FAILED(device->CreateBuffer(&bd, nullptr, cbFrame.GetAddressOf()))) return false;
 
     // Creature quad: 4 corners of a unit quad [-0.5,0.5].
     // IMMUTABLE = never changes; fastest GPU read mode.
@@ -151,18 +156,30 @@ bool Renderer::createBuffers(int w, int h) {
     bd.BindFlags      = D3D11_BIND_VERTEX_BUFFER;
     bd.CPUAccessFlags = 0;
     D3D11_SUBRESOURCE_DATA sd{}; sd.pSysMem = quad;
-    device->CreateBuffer(&bd, &sd, &creatureQuadVB);
+    if (FAILED(device->CreateBuffer(&bd, &sd, creatureQuadVB.GetAddressOf()))) return false;
 
     // Creature instance buffer: one entry per living creature, rebuilt every frame.
     // Pre-allocated for up to MAX_CREATURES creatures (increase if needed).
     bd.ByteWidth      = (UINT)(sizeof(CreatureInstance) * MAX_CREATURES);
     bd.Usage          = D3D11_USAGE_DYNAMIC;
+    bd.BindFlags      = D3D11_BIND_CONSTANT_BUFFER;
     bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    device->CreateBuffer(&bd, nullptr, &creatureInstanceVB);
+
+    HRESULT hr = device->CreateBuffer(&bd, nullptr, cbFrame.GetAddressOf());
+    if (FAILED(hr)) {
+        char buf[128];
+        sprintf_s(buf, "CreateBuffer cbFrame FAILED: hr=0x%08X sizeof=%zu\n",
+                  (unsigned)hr, sizeof(FrameConstants));
+        OutputDebugStringA(buf);
+        return false;
+    }
+    OutputDebugStringA("cbFrame created OK\n");
+
+    if (FAILED(device->CreateBuffer(&bd, nullptr, creatureInstanceVB.GetAddressOf()))) return false;
 
     // FOV cone: also dynamic — rebuilt each frame as selected creature moves.
     bd.ByteWidth = (UINT)(sizeof(SimpleVertex) * FOV_CONE_MAX_VERTS);
-    device->CreateBuffer(&bd, nullptr, &fovConeVB);
+    if (FAILED(device->CreateBuffer(&bd, nullptr, fovConeVB.GetAddressOf()))) return false;
 
     return createDepthBuffer(w, h);
 }
@@ -172,8 +189,8 @@ bool Renderer::createBuffers(int w, int h) {
 // Stores the depth of the closest drawn pixel at each screen position.
 // Must be recreated whenever the window is resized.
 bool Renderer::createDepthBuffer(int w, int h) {
-    safeRelease(depthTex);
-    safeRelease(depthDSV);
+    depthTex.Reset();
+    depthDSV.Reset();
 
     D3D11_TEXTURE2D_DESC td{};
     td.Width            = (UINT)w;
@@ -184,8 +201,8 @@ bool Renderer::createDepthBuffer(int w, int h) {
     td.SampleDesc.Count = 1;
     td.Usage            = D3D11_USAGE_DEFAULT;
     td.BindFlags        = D3D11_BIND_DEPTH_STENCIL;
-    if (FAILED(device->CreateTexture2D(&td, nullptr, &depthTex))) return false;
-    if (FAILED(device->CreateDepthStencilView(depthTex, nullptr, &depthDSV))) return false;
+    if (FAILED(device->CreateTexture2D(&td, nullptr, depthTex.GetAddressOf()))) return false;
+    if (FAILED(device->CreateDepthStencilView(depthTex.Get(), nullptr, depthDSV.GetAddressOf()))) return false;
     return true;
 }
 
@@ -197,15 +214,4 @@ void Renderer::resize(int w, int h) {
 // ── shutdown ──────────────────────────────────────────────────────────────────
 // D3D11 objects use COM reference counting. Release() decrements the count;
 // the object is freed when it reaches zero. safeRelease() also nulls the pointer.
-void Renderer::shutdown() {
-    safeRelease(creatureVS); safeRelease(creaturePS);
-    safeRelease(simpleVS);   safeRelease(fovPS);
-    safeRelease(creatureLayout); safeRelease(simpleLayout);
-    safeRelease(cbFrame);
-    safeRelease(creatureQuadVB); safeRelease(creatureInstanceVB);
-    safeRelease(fovConeVB);
-    safeRelease(rsSolid);    safeRelease(rsSolidNoCull);
-    safeRelease(dssDepth);   safeRelease(dssNoDepthWrite);
-    safeRelease(bsAlpha);
-    safeRelease(depthTex);   safeRelease(depthDSV);
-}
+void Renderer::shutdown() { }

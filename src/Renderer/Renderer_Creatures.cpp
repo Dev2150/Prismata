@@ -79,7 +79,7 @@ void Renderer::renderCreatures(const World& world) {
     // Lock the instance buffer so the CPU can write new creature data into it.
     // MAP_WRITE_DISCARD = discard old contents (no GPU sync needed).
     D3D11_MAPPED_SUBRESOURCE ms{};
-    ctx->Map(creatureInstanceVB, 0, D3D11_MAP_WRITE_DISCARD, 0, &ms);
+    ctx->Map(creatureInstanceVB.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &ms);
     auto* inst  = (CreatureInstance*)ms.pData;
     int   count = 0;
 
@@ -138,25 +138,25 @@ void Renderer::renderCreatures(const World& world) {
         inst[count].pad[0] = inst[count].pad[1] = inst[count].pad[2] = 0.f;
         count++;
     }
-    ctx->Unmap(creatureInstanceVB, 0);
+    ctx->Unmap(creatureInstanceVB.Get(), 0);
     if (count == 0) return;
 
-    ctx->RSSetState(rsSolid);
-    ctx->IASetInputLayout(creatureLayout);
+    ctx->RSSetState(rsSolid.Get());
+    ctx->IASetInputLayout(creatureLayout.Get());
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
-    ctx->VSSetShader(creatureVS, nullptr, 0);
-    ctx->PSSetShader(creaturePS, nullptr, 0);
+    ctx->VSSetShader(creatureVS.Get(), nullptr, 0);
+    ctx->PSSetShader(creaturePS.Get(), nullptr, 0);
 
-    ctx->OMSetDepthStencilState(dssDepth, 0);  // depth test + write (creatures occlude each other)
+    ctx->OMSetDepthStencilState(dssDepth.Get(), 0);  // depth test + write (creatures occlude each other)
     float bf[4] = {};
-    ctx->OMSetBlendState(bsAlpha, bf, 0xFFFFFFFF);
+    ctx->OMSetBlendState(bsAlpha.Get(), bf, 0xFFFFFFFF);
 
     // Bind two vertex buffer slots simultaneously:
     //   slot 0: creatureQuadVB — 4 quad corners, advances per vertex
     //   slot 1: creatureInstanceVB — per-creature data, advances per instance
     UINT strides[2] = { sizeof(float)*2, sizeof(CreatureInstance) };
     UINT offsets[2] = { 0, 0 };
-    ID3D11Buffer* vbs[2] = { creatureQuadVB, creatureInstanceVB };
+    ID3D11Buffer* vbs[2] = { creatureQuadVB.Get(), creatureInstanceVB.Get() };
     ctx->IASetVertexBuffers(0, 2, vbs, strides, offsets);
 
     // 4 vertices per billboard × count creatures = all creatures in one draw call

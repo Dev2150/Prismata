@@ -2,6 +2,7 @@
 #include <cstring>
 #include <cmath>
 #include <algorithm>
+#include <cassert>
 
 #include "World/World.hpp"
 #include "World/World_Planet.hpp"
@@ -72,10 +73,19 @@ void Renderer::updateFrameConstants(const World& world, float aspect) {
     Mat4 proj = camera.projMatrix(aspect);  // applies perspective (far = small)
     Mat4 vp   = (view * proj).transposed(); // combined transform, transposed for HLSL
 
+    if (!ctx.Get()) {
+        OutputDebugStringA("CRASH IMMINENT: ctx is null in updateFrameConstants\n");
+        return;
+    }
+    if (!cbFrame.Get()) {
+        OutputDebugStringA("CRASH IMMINENT: cbFrame is null — createBuffers failed or was never called\n");
+        return;
+    }
+
     // Map/Unmap: the only safe way to write to a DYNAMIC GPU buffer.
     // MAP_WRITE_DISCARD = discard old contents; no GPU sync required (fast).
     D3D11_MAPPED_SUBRESOURCE ms{};
-    ctx->Map(cbFrame, 0, D3D11_MAP_WRITE_DISCARD, 0, &ms);
+    ctx->Map(cbFrame.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &ms);
     auto* fc = (FrameConstants*)ms.pData;
 
     memcpy(fc->viewProj, vp.m, sizeof(vp.m));
@@ -115,11 +125,11 @@ void Renderer::updateFrameConstants(const World& world, float aspect) {
         } else { fc->fowData[3] = 0.f; }
     } else { fc->fowData[3] = 0.f; }
 
-    ctx->Unmap(cbFrame, 0);
+    ctx->Unmap(cbFrame.Get(), 0);
 
     // Bind to shader register b0 in both the VS and PS stages
-    ctx->VSSetConstantBuffers(0, 1, &cbFrame);
-    ctx->PSSetConstantBuffers(0, 1, &cbFrame);
+    ctx->VSSetConstantBuffers(0, 1, cbFrame.GetAddressOf());
+    ctx->PSSetConstantBuffers(0, 1, cbFrame.GetAddressOf());
 }
 
 // ── render ────────────────────────────────────────────────────────────────────
@@ -128,8 +138,8 @@ void Renderer::render(const World& world, float aspectRatio) {
     updateFrameConstants(world, aspectRatio);
 
     // Draw order matters: opaque first, then transparent overlays on top
-    ctx->RSSetState(rsSolid);
-    ctx->OMSetDepthStencilState(dssDepth, 0);
+    ctx->RSSetState(rsSolid.Get());
+    ctx->OMSetDepthStencilState(dssDepth.Get(), 0);
 
     if (showFOVCone)
         renderFOVCone(world);

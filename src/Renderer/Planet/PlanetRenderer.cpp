@@ -9,25 +9,28 @@
 #include <cmath>
 #include <vector>
 #include <algorithm>
+#include <wrl/client.h>
 
 #include "imgui.hpp"   // for drawDebugUI
 #include "Renderer/Renderer.hpp"
 #include "World/World.hpp"
 #include "World/World_Planet.hpp"
 
+using Microsoft::WRL::ComPtr;
+
 // ── Shader compilation helper ────────────────────────────────────────────────
-static ID3DBlob* compileShader(const char* src, const char* entry, const char* target) {
-    ID3DBlob *blob = nullptr, *err = nullptr;
+static ComPtr<ID3DBlob> compileShader(const char* src, const char* entry, const char* target) {
+    ComPtr<ID3DBlob> blob;
+    ComPtr<ID3DBlob> err;
     HRESULT hr = D3DCompile(src, strlen(src), nullptr, nullptr, nullptr,
-                            entry, target, D3DCOMPILE_OPTIMIZATION_LEVEL1, 0, &blob, &err);
+                            entry, target, D3DCOMPILE_OPTIMIZATION_LEVEL1, 0,
+                            blob.GetAddressOf(), err.GetAddressOf());
     if (FAILED(hr)) {
         if (err) {
             OutputDebugStringA((const char*)err->GetBufferPointer());
-            err->Release();
         }
         return nullptr;
     }
-    if (err) err->Release();
     return blob;
 }
 
@@ -52,14 +55,12 @@ bool PlanetRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* c,
 // ── compileShaders ────────────────────────────────────────────────────────────
 bool PlanetRenderer::compileShaders() {
     // ── Planet terrain shader ─────────────────────────────────────────────────
-    ID3DBlob* tvs = compileShader(PLANET_HLSL, "VSMain", "vs_5_0");
-    ID3DBlob* tps = compileShader(PLANET_HLSL, "PSMain", "ps_5_0");
-    if (!tvs || !tps) {
-        if (tvs) tvs->Release(); if (tps) tps->Release();
-        return false;
-    }
-    device->CreateVertexShader(tvs->GetBufferPointer(), tvs->GetBufferSize(), nullptr, &terrainVS);
-    device->CreatePixelShader (tps->GetBufferPointer(), tps->GetBufferSize(), nullptr, &terrainPS);
+    auto tvs = compileShader(PLANET_HLSL, "VSMain", "vs_5_0");
+    auto tps = compileShader(PLANET_HLSL, "PSMain", "ps_5_0");
+    if (!tvs || !tps) return false;
+
+    device->CreateVertexShader(tvs->GetBufferPointer(), tvs->GetBufferSize(), nullptr, terrainVS.GetAddressOf());
+    device->CreatePixelShader (tps->GetBufferPointer(), tps->GetBufferSize(), nullptr, terrainPS.GetAddressOf());
 
     // Input layout matching PlanetVertex: pos(3), nrm(3), uv(2), height(1), pad(1)
     D3D11_INPUT_ELEMENT_DESC ld[] = {
@@ -69,32 +70,28 @@ bool PlanetRenderer::compileShaders() {
         {"TEXCOORD", 1, DXGI_FORMAT_R32_FLOAT,          0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
         {"TEXCOORD", 2, DXGI_FORMAT_R32_FLOAT,          0, 36, D3D11_INPUT_PER_VERTEX_DATA, 0},
     };
-    device->CreateInputLayout(ld, 5, tvs->GetBufferPointer(), tvs->GetBufferSize(), &layout);
-    tvs->Release(); tps->Release();
+    device->CreateInputLayout(ld, 5, tvs->GetBufferPointer(), tvs->GetBufferSize(), layout.GetAddressOf());
 
     // ── Atmosphere shell shader ───────────────────────────────────────────────
-    ID3DBlob* avs = compileShader(PLANET_ATMO_HLSL, "VSAtmo", "vs_5_0");
-    ID3DBlob* aps = compileShader(PLANET_ATMO_HLSL, "PSAtmo", "ps_5_0");
-    if (!avs || !aps) {
-        if (avs) avs->Release(); if (aps) aps->Release();
-        return false;
-    }
-    device->CreateVertexShader(avs->GetBufferPointer(), avs->GetBufferSize(), nullptr, &atmoVS);
-    device->CreatePixelShader (aps->GetBufferPointer(), aps->GetBufferSize(), nullptr, &atmoPS);
-    avs->Release(); aps->Release();
+    auto avs = compileShader(PLANET_ATMO_HLSL, "VSAtmo", "vs_5_0");
+    auto aps = compileShader(PLANET_ATMO_HLSL, "PSAtmo", "ps_5_0");
+    if (!avs || !aps) return false;
+
+    device->CreateVertexShader(avs->GetBufferPointer(), avs->GetBufferSize(), nullptr, atmoVS.GetAddressOf());
+    device->CreatePixelShader (aps->GetBufferPointer(), aps->GetBufferSize(), nullptr, atmoPS.GetAddressOf());
 
     // ── Sun billboard ─────────────────────────────────────────────────────────
-    ID3DBlob* svs = compileShader(SUN_HLSL, "SunVS", "vs_5_0");
-    ID3DBlob* sps = compileShader(SUN_HLSL, "SunPS", "ps_5_0");
-    if (!svs || !sps) { if(svs) svs->Release(); if(sps) sps->Release(); return false; }
-    device->CreateVertexShader(svs->GetBufferPointer(), svs->GetBufferSize(), nullptr, &sunVS);
-    device->CreatePixelShader (sps->GetBufferPointer(), sps->GetBufferSize(), nullptr, &sunPS);
+    auto svs = compileShader(SUN_HLSL, "SunVS", "vs_5_0");
+    auto sps = compileShader(SUN_HLSL, "SunPS", "ps_5_0");
+    if (!svs || !sps) return false;
+
+    device->CreateVertexShader(svs->GetBufferPointer(), svs->GetBufferSize(), nullptr, sunVS.GetAddressOf());
+    device->CreatePixelShader (sps->GetBufferPointer(), sps->GetBufferSize(), nullptr, sunPS.GetAddressOf());
 
     D3D11_INPUT_ELEMENT_DESC sunLD[] = {
         {"POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
     };
-    device->CreateInputLayout(sunLD, 1, svs->GetBufferPointer(), svs->GetBufferSize(), &sunLayout);
-    svs->Release(); sps->Release();
+    device->CreateInputLayout(sunLD, 1, svs->GetBufferPointer(), svs->GetBufferSize(), sunLayout.GetAddressOf());
 
     return true;
 }
@@ -108,11 +105,11 @@ bool PlanetRenderer::createBuffers() {
     bd.Usage          = D3D11_USAGE_DYNAMIC;
     bd.BindFlags      = D3D11_BIND_CONSTANT_BUFFER;
     bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    if (FAILED(device->CreateBuffer(&bd, nullptr, &cbFrame))) return false;
+    if (FAILED(device->CreateBuffer(&bd, nullptr, cbFrame.GetAddressOf()))) return false;
 
     // Planet constants (b1) — per-draw planet-specific data
     bd.ByteWidth = sizeof(PlanetConstants);
-    if (FAILED(device->CreateBuffer(&bd, nullptr, &cbPlanet))) return false;
+    if (FAILED(device->CreateBuffer(&bd, nullptr, cbPlanet.GetAddressOf()))) return false;
 
     return true;
 }
@@ -159,12 +156,12 @@ bool PlanetRenderer::createAtmosphere() {
     bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
     bd.ByteWidth = (UINT)(verts.size() * sizeof(float));
     sd.pSysMem   = verts.data();
-    if (FAILED(device->CreateBuffer(&bd, &sd, &atmoVB))) return false;
+    if (FAILED(device->CreateBuffer(&bd, &sd, atmoVB.GetAddressOf()))) return false;
 
     bd.BindFlags = D3D11_BIND_INDEX_BUFFER;
     bd.ByteWidth = (UINT)(idxs.size() * sizeof(uint32_t));
     sd.pSysMem   = idxs.data();
-    if (FAILED(device->CreateBuffer(&bd, &sd, &atmoIB))) return false;
+    if (FAILED(device->CreateBuffer(&bd, &sd, atmoIB.GetAddressOf()))) return false;
 
     atmoIdxCount = (int)idxs.size();
     return true;
@@ -179,7 +176,7 @@ bool PlanetRenderer::createSunQuad() {
     bd.Usage          = D3D11_USAGE_IMMUTABLE;
     bd.BindFlags      = D3D11_BIND_VERTEX_BUFFER;
     D3D11_SUBRESOURCE_DATA sd{ quad };
-    return SUCCEEDED(device->CreateBuffer(&bd, &sd, &sunQuadVB));
+    return SUCCEEDED(device->CreateBuffer(&bd, &sd, sunQuadVB.GetAddressOf()));
 }
 
 // ── createRenderStates ────────────────────────────────────────────────────────
@@ -188,24 +185,24 @@ bool PlanetRenderer::createRenderStates() {
     rd.DepthClipEnable = TRUE;
 
     rd.FillMode = D3D11_FILL_SOLID; rd.CullMode = D3D11_CULL_NONE;
-    device->CreateRasterizerState(&rd, &rsSolid);
+    device->CreateRasterizerState(&rd, rsSolid.GetAddressOf());
 
     rd.CullMode = D3D11_CULL_NONE;
-    device->CreateRasterizerState(&rd, &rsSolidNoCull);
+    device->CreateRasterizerState(&rd, rsSolidNoCull.GetAddressOf());
 
     D3D11_DEPTH_STENCIL_DESC dsd{};
     dsd.DepthEnable    = TRUE;
     dsd.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
     dsd.DepthFunc      = D3D11_COMPARISON_LESS;
-    device->CreateDepthStencilState(&dsd, &dssDepth);
+    device->CreateDepthStencilState(&dsd, dssDepth.GetAddressOf());
 
     dsd.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
-    device->CreateDepthStencilState(&dsd, &dssNoWrite);
+    device->CreateDepthStencilState(&dsd, dssNoWrite.GetAddressOf());
 
     // Sun: skip depth test entirely so it always appears in the sky
     dsd.DepthEnable    = FALSE;
     dsd.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
-    device->CreateDepthStencilState(&dsd, &dssNoDepth);
+    device->CreateDepthStencilState(&dsd, dssNoDepth.GetAddressOf());
 
     // Standard alpha blend for atmosphere
     D3D11_BLEND_DESC bd{};
@@ -218,15 +215,15 @@ bool PlanetRenderer::createRenderStates() {
     rt.DestBlendAlpha = D3D11_BLEND_ZERO;
     rt.BlendOpAlpha   = D3D11_BLEND_OP_ADD;
     rt.RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
-    device->CreateBlendState(&bd, &bsAlpha);
+    device->CreateBlendState(&bd, bsAlpha.GetAddressOf());
 
     // Additive blend: src + dst  (great for glowing sun disc)
     rt.SrcBlend  = D3D11_BLEND_SRC_ALPHA;
     rt.DestBlend = D3D11_BLEND_ONE;
-    device->CreateBlendState(&bd, &bsAdditive);
+    device->CreateBlendState(&bd, bsAdditive.GetAddressOf());
 
     rt.BlendEnable = FALSE;
-    device->CreateBlendState(&bd, &bsOpaque);
+    device->CreateBlendState(&bd, bsOpaque.GetAddressOf());
 
     return true;
 }
@@ -235,7 +232,7 @@ bool PlanetRenderer::createRenderStates() {
 // Drives the quadtree LOD split/merge. Must run before render().
 void PlanetRenderer::update(const Camera& cam) {
     Vec3 cp = {cam.pos.x, cam.pos.y, cam.pos.z};
-    tree->update(cp, device, ctx);
+    tree->update(cp, device.Get(), ctx.Get());
     totalNodes  = tree->totalNodes();
     totalLeaves = tree->totalLeaves();
 }
@@ -257,7 +254,7 @@ void PlanetRenderer::uploadFrameConstants(const World& world, const Renderer& re
     Mat4 vp   = (view * proj).transposed();
 
     D3D11_MAPPED_SUBRESOURCE ms{};
-    ctx->Map(cbFrame, 0, D3D11_MAP_WRITE_DISCARD, 0, &ms);
+    ctx->Map(cbFrame.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &ms);
     auto* fc = (FrameConstants*)ms.pData;
 
     memcpy(fc->viewProj, vp.m, sizeof(vp.m));
@@ -310,16 +307,16 @@ void PlanetRenderer::uploadFrameConstants(const World& world, const Renderer& re
         } else { fc->fowData[3] = 0.f; }
     } else { fc->fowData[3] = 0.f; }
 
-    ctx->Unmap(cbFrame, 0);
+    ctx->Unmap(cbFrame.Get(), 0);
 
-    ctx->VSSetConstantBuffers(0, 1, &cbFrame);
-    ctx->PSSetConstantBuffers(0, 1, &cbFrame);
+    ctx->VSSetConstantBuffers(0, 1, cbFrame.GetAddressOf());
+    ctx->PSSetConstantBuffers(0, 1, cbFrame.GetAddressOf());
 }
 
 // ── uploadPlanetConstants ─────────────────────────────────────────────────────
 void PlanetRenderer::uploadPlanetConstants(float timeOfDay) {
     D3D11_MAPPED_SUBRESOURCE ms{};
-    ctx->Map(cbPlanet, 0, D3D11_MAP_WRITE_DISCARD, 0, &ms);
+    ctx->Map(cbPlanet.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &ms);
     auto* pc = (PlanetConstants*)ms.pData;
 
     // Atmosphere: pale blue tint, thickness ~8% of planet radius
@@ -333,25 +330,25 @@ void PlanetRenderer::uploadPlanetConstants(float timeOfDay) {
     pc->planetParams[2] = 0.f;
     pc->planetParams[3] = 0.f;
 
-    ctx->Unmap(cbPlanet, 0);
+    ctx->Unmap(cbPlanet.Get(), 0);
 
-    ctx->VSSetConstantBuffers(1, 1, &cbPlanet);
-    ctx->PSSetConstantBuffers(1, 1, &cbPlanet);
+    ctx->VSSetConstantBuffers(1, 1, cbPlanet.GetAddressOf());
+    ctx->PSSetConstantBuffers(1, 1, cbPlanet.GetAddressOf());
 }
 
 // ── renderPatches ─────────────────────────────────────────────────────────────
 // Issues one DrawIndexed call per visible leaf node.
 // All leaves share the same shader and input layout — only the VB/IB differ.
 void PlanetRenderer::renderPatches() {
-    ctx->RSSetState(wireframe ? nullptr : rsSolid);
-    ctx->IASetInputLayout(layout);
+    ctx->RSSetState(wireframe ? nullptr : rsSolid.Get());
+    ctx->IASetInputLayout(layout.Get());
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    ctx->VSSetShader(terrainVS, nullptr, 0);
-    ctx->PSSetShader(terrainPS, nullptr, 0);
+    ctx->VSSetShader(terrainVS.Get(), nullptr, 0);
+    ctx->PSSetShader(terrainPS.Get(), nullptr, 0);
 
-    ctx->OMSetDepthStencilState(dssDepth, 0);
+    ctx->OMSetDepthStencilState(dssDepth.Get(), 0);
     float bf[4] = {};
-    ctx->OMSetBlendState(bsOpaque, bf, 0xFFFFFFFF);
+    ctx->OMSetBlendState(bsOpaque.Get(), bf, 0xFFFFFFFF);
 
     if (wireframe) {
         // Use wireframe rasterizer state
@@ -359,11 +356,11 @@ void PlanetRenderer::renderPatches() {
         wrd.FillMode = D3D11_FILL_WIREFRAME;
         wrd.CullMode = D3D11_CULL_NONE;
         wrd.DepthClipEnable = TRUE;
-        ID3D11RasterizerState* rsWire = nullptr;
-        device->CreateRasterizerState(&wrd, &rsWire);
-        if (rsWire) { ctx->RSSetState(rsWire); rsWire->Release(); }
+        ComPtr<ID3D11RasterizerState> rsWire;
+        device->CreateRasterizerState(&wrd, rsWire.GetAddressOf());
+        if (rsWire) { ctx->RSSetState(rsWire.Get()); }
     } else {
-        ctx->RSSetState(rsSolid);
+        ctx->RSSetState(rsSolid.Get());
     }
 
     std::vector<PlanetNode*> leaves;
@@ -382,26 +379,26 @@ void PlanetRenderer::renderPatches() {
 // Draws the transparent atmospheric shell last (after opaque planet surface)
 // so additive blending composites correctly over the terrain.
 void PlanetRenderer::renderAtmosphere(const Camera& /*cam*/) {
-    if (!showAtmosphere || !atmoVB || wireframe) return;
+    if (!showAtmosphere || !atmoVB.Get() || wireframe) return;
 
-    ctx->RSSetState(rsSolidNoCull);
-    ctx->OMSetDepthStencilState(dssNoWrite, 0);  // depth test but no write (overlay)
+    ctx->RSSetState(rsSolidNoCull.Get());
+    ctx->OMSetDepthStencilState(dssNoWrite.Get(), 0);  // depth test but no write (overlay)
     float bf[4] = {};
-    ctx->OMSetBlendState(bsAlpha, bf, 0xFFFFFFFF);
+    ctx->OMSetBlendState(bsAlpha.Get(), bf, 0xFFFFFFFF);
 
-    ctx->IASetInputLayout(layout);          // pos-only, reuse planet layout (first element)
+    ctx->IASetInputLayout(layout.Get());          // pos-only, reuse planet layout (first element)
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    ctx->VSSetShader(atmoVS, nullptr, 0);
-    ctx->PSSetShader(atmoPS, nullptr, 0);
+    ctx->VSSetShader(atmoVS.Get(), nullptr, 0);
+    ctx->PSSetShader(atmoPS.Get(), nullptr, 0);
 
     UINT stride = sizeof(float) * 3, offset = 0;
-    ctx->IASetVertexBuffers(0, 1, &atmoVB, &stride, &offset);
-    ctx->IASetIndexBuffer(atmoIB, DXGI_FORMAT_R32_UINT, 0);
+    ctx->IASetVertexBuffers(0, 1, atmoVB.GetAddressOf(), &stride, &offset);
+    ctx->IASetIndexBuffer(atmoIB.Get(), DXGI_FORMAT_R32_UINT, 0);
     ctx->DrawIndexed((UINT)atmoIdxCount, 0, 0);
 
-    ctx->OMSetBlendState(bsOpaque, bf, 0xFFFFFFFF);
-    ctx->OMSetDepthStencilState(dssDepth, 0);
-    ctx->RSSetState(rsSolid);
+    ctx->OMSetBlendState(bsOpaque.Get(), bf, 0xFFFFFFFF);
+    ctx->OMSetDepthStencilState(dssDepth.Get(), 0);
+    ctx->RSSetState(rsSolid.Get());
 }
 
 // ── renderSun ────────────────────────────────────────────────────────────────
@@ -409,26 +406,26 @@ void PlanetRenderer::renderAtmosphere(const Camera& /*cam*/) {
 // Rendered with additive blending and no depth write so it composites cleanly
 // over the space-black background without blocking anything.
 void PlanetRenderer::renderSun() {
-    if (!showSun || !sunQuadVB || wireframe) return;
+    if (!showSun || !sunQuadVB.Get() || wireframe) return;
 
-    ctx->RSSetState(rsSolidNoCull);
-    ctx->OMSetDepthStencilState(dssNoWrite, 0);       // test against terrain, don't write
+    ctx->RSSetState(rsSolidNoCull.Get());
+    ctx->OMSetDepthStencilState(dssNoWrite.Get(), 0);       // test against terrain, don't write
     float bf[4] = {};
-    ctx->OMSetBlendState(bsAdditive, bf, 0xFFFFFFFF); // additive for the glow
+    ctx->OMSetBlendState(bsAdditive.Get(), bf, 0xFFFFFFFF); // additive for the glow
 
-    ctx->IASetInputLayout(sunLayout);
+    ctx->IASetInputLayout(sunLayout.Get());
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
-    ctx->VSSetShader(sunVS, nullptr, 0);
-    ctx->PSSetShader(sunPS, nullptr, 0);
+    ctx->VSSetShader(sunVS.Get(), nullptr, 0);
+    ctx->PSSetShader(sunPS.Get(), nullptr, 0);
 
     UINT stride = sizeof(float) * 2, offset = 0;
-    ctx->IASetVertexBuffers(0, 1, &sunQuadVB, &stride, &offset);
+    ctx->IASetVertexBuffers(0, 1, sunQuadVB.GetAddressOf(), &stride, &offset);
     ctx->Draw(4, 0);
 
     // Restore states
-    ctx->OMSetBlendState(bsOpaque, bf, 0xFFFFFFFF);
-    ctx->OMSetDepthStencilState(dssDepth, 0);
-    ctx->RSSetState(rsSolid);
+    ctx->OMSetBlendState(bsOpaque.Get(), bf, 0xFFFFFFFF);
+    ctx->OMSetDepthStencilState(dssDepth.Get(), 0);
+    ctx->RSSetState(rsSolid.Get());
 }
 
 // ── render ────────────────────────────────────────────────────────────────────
@@ -467,15 +464,4 @@ void PlanetRenderer::drawDebugUI() {
 // ── shutdown ──────────────────────────────────────────────────────────────────
 void PlanetRenderer::shutdown() {
     if (tree) { tree->shutdown(); delete tree; tree = nullptr; }
-
-    safeRelease(terrainVS); safeRelease(terrainPS);
-    safeRelease(atmoVS);    safeRelease(atmoPS);
-    safeRelease(sunVS);     safeRelease(sunPS);
-    safeRelease(layout);    safeRelease(sunLayout);
-    safeRelease(cbFrame);   safeRelease(cbPlanet);
-    safeRelease(atmoVB);    safeRelease(atmoIB);
-    safeRelease(sunQuadVB);
-    safeRelease(rsSolid);   safeRelease(rsSolidNoCull);
-    safeRelease(dssDepth);  safeRelease(dssNoWrite);  safeRelease(dssNoDepth);
-    safeRelease(bsAlpha);   safeRelease(bsAdditive);  safeRelease(bsOpaque);
 }

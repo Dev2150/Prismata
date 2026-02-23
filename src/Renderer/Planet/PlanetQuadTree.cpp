@@ -166,8 +166,6 @@ void PlanetFaceTree::splitNode(PlanetNode* node, ID3D11Device* dev, ID3D11Device
         node->face, node->depth+1, umid, vmid, node->u1, node->v1, cfg);
 
     // Release parent mesh: children will render instead
-    if (node->vb) { node->vb->Release(); node->vb = nullptr; }
-    if (node->ib) { node->ib->Release(); node->ib = nullptr; }
     node->meshBuilt = false;
     node->idxCount  = 0;
     node->isSplit   = true;
@@ -274,12 +272,12 @@ void PlanetFaceTree::update(const Vec3& camPos, ID3D11Device* dev,
 }
 
 // ── PlanetFaceTree::collectLeavesRec ─────────────────────────────────────────
-void PlanetFaceTree::collectLeavesRec(const PlanetNode* n,
-                                      std::vector<PlanetNode*>& out) const {
+void PlanetFaceTree::collectLeavesRec(PlanetNode *n,
+                                      std::vector<PlanetNode *> &out) const {
     if (!n) return;
     if (!n->isSplit) {
         if (n->meshBuilt)
-            out.push_back(const_cast<PlanetNode*>(n));
+            out.emplace_back(n);
         return;
     }
     for (const auto& ch : n->children)

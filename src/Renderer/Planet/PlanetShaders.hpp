@@ -139,9 +139,8 @@ float4 PSMain(VOut v) : SV_TARGET {
         bool inFOV = false;
 
         if (d <= fowData.w) {
-            if (d < 0.1f) {
-                inFOV = true;
-            } else {
+            if (d < 0.1f) { inFOV = true; }
+            else {
                 float cosA = dot(normalize(toPixel), fowFacing.xyz);
                 if (cosA >= fowFacing.w) {
                     inFOV = true;
@@ -310,6 +309,15 @@ float4 SunPS(SVOut v) : SV_TARGET {
 // ── STAR_HLSL ─────────────────────────────────────────────────────────────────
 // Procedural twinkling starfield. Reuses the atmosphere sphere mesh but pushes
 // it to the far clip plane.
+// Key design:
+//   Direction is computed from planet centre → vertex so the star sphere
+//     covers the full sky uniformly regardless of where the planet sits in
+//     world space (fixes clustering near the sun / south pole).
+//   The billboard is centred on the CAMERA, not the planet, so stars don't
+//     drift as the player moves around the surface.
+//   Twinkling uses simTime; direction is stable so positions never shift.
+//   nightFactor fades stars out during the day using the sun elevation angle
+//     computed from timeOfDay (sunColor.w).
 static const char* STAR_HLSL = R"HLSL(
 cbuffer FrameConstants : register(b0) {
     float4x4 viewProj;
@@ -317,9 +325,9 @@ cbuffer FrameConstants : register(b0) {
     float4   lightDir;
     float4   fowData;
     float4   fowFacing;
-    float4   sunColor;
-    float4   ambientColor;
-    float4   planetCenter;
+    float4   sunColor;      // w = timeOfDay [0,1]
+    float4   ambientColor;  // w = simTime (seconds)
+    float4   planetCenter;  // xyz = planet centre, w = radius
 };
 
 struct VIn { float3 pos : POSITION; };
@@ -330,33 +338,51 @@ struct VOut {
 
 VOut StarVS(VIn v) {
     VOut o;
-    // Center the sphere on the camera
-    float3 wpos = camPos.xyz + normalize(v.pos) * 1000.0f; 
+    // Direction from planet centre to vertex: stable regardless of camera position.
+    // All atmosphere vertices are on a sphere centred at planetCenter.xyz, so this
+    // gives a clean uniform distribution over the full sky.
+    float3 dir = normalize(v.pos - planetCenter.xyz);
+
+    // Place the star shell centred on the camera so it never moves with the player.
+    float3 wpos = camPos.xyz + dir * 500000.0f;
     o.sv = mul(float4(wpos, 1.0f), viewProj);
-    o.sv.z = o.sv.w * 0.9999f; // push to far plane
-    o.dir = normalize(v.pos);
+    o.sv.z = o.sv.w * 0.9999f;   // always behind everything
+    o.dir  = dir;
     return o;
 }
 
 float hash(float3 p) {
-    p = frac(p * float3(0.1031, 0.1030, 0.0973));
-    p += dot(p, p.yxz + 33.33);
+    p = frac(p * float3(0.1031f, 0.1030f, 0.0973f));
+    p += dot(p, p.yxz + 33.33f);
     return frac((p.x + p.y) * p.z);
 }
 
 float4 StarPS(VOut v) : SV_TARGET {
     float3 dir = normalize(v.dir);
-    float h = hash(dir * 800.0);
-    float star = smoothstep(0.99, 1.0, h);
+
+    // Star density: only the top ~1% of hash values become visible stars.
+    float h    = hash(dir * 800.0f);
+    float star = smoothstep(0.990f, 1.0f, h);
     
-    float time = ambientColor.w * 5.0;
-    float twinkle = sin(time + hash(dir * 100.0) * 6.28) * 0.5 + 0.5;
-    star *= 0.2 + 0.8 * twinkle;
+    // Twinkling: unique phase per star, driven by simTime.
+    // Using a slow speed (2.5) so it feels like real starlight shimmer.
+    float time    = ambientColor.w * 2.5f;
+    float phase   = hash(dir * 137.5f) * 6.2831853f;
+    float twinkle = sin(time + phase) * 0.5f + 0.5f;
+    star *= 0.25f + 0.75f * twinkle;
     
-    float elev = -cos(sunColor.w * 6.2831853);
-    float nightFactor = smoothstep(0.1, -0.1, elev); // 1 at night, 0 during day
-    float3 tint = lerp(float3(0.8, 0.9, 1.0), float3(1.0, 0.9, 0.8), hash(dir * 200.0));
+    // Day/night fade. sunColor.w = timeOfDay in [0,1].
+    // elev = +1 at noon (t=0.5), -1 at midnight (t=0 or 1).
+    float elev        = -cos(sunColor.w * 6.2831853f);
+    // Fully visible when elev < -0.15 (sun well below horizon); zero when elev > 0.15.
+    float nightFactor = smoothstep(0.15f, -0.15f, elev);
     
-    return float4(star * tint * nightFactor, star * nightFactor);
+    // Subtle colour tint per star (blue-white to warm white).
+    float3 tint = lerp(float3(0.75f, 0.88f, 1.0f),
+                       float3(1.0f,  0.92f, 0.80f),
+                       hash(dir * 213.7f));
+
+    float brightness = star * nightFactor;
+    return float4(tint * brightness, brightness);
 }
 )HLSL";

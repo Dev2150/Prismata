@@ -2,23 +2,6 @@
 // ── PlanetRenderer.hpp ────────────────────────────────────────────────────────
 // High-level D3D11 renderer for the procedural planet.
 // Integrates into the existing KyberPlanet render loop alongside the world terrain.
-//
-// USAGE IN App.cpp / RunApplication():
-// ─────────────────────────────────────
-//   // After Renderer::init():
-//   PlanetConfig pcfg;
-//   pcfg.radius       = 1000.f;
-//   pcfg.center       = {0, -1500.f, 0};   // planet sits below the flat world
-//   pcfg.heightScale  = 120.f;
-//   pcfg.maxDepth     = 16;
-//   g_planet.init(g_pd3dDevice, g_pd3dDeviceContext, pcfg);
-//
-//   // In the main render loop (after g_renderer.render()):
-//   g_planet.update(g_renderer.camera);
-//   g_planet.render(g_renderer.camera, aspect, g_world.timeOfDay(), g_world.simTime);
-//
-//   // On shutdown (before ImGui / D3D11 cleanup):
-//   g_planet.shutdown();
 
 #include <d3d11.h>
 #include "PlanetQuadTree.hpp"

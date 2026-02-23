@@ -1,7 +1,5 @@
 // ── PlanetQuadTree.cpp ────────────────────────────────────────────────────────
 // Implements the split/merge logic and GPU mesh generation for planet quadtree nodes.
-//
-// SPLIT DECISION
 // ──────────────
 //   A node should subdivide when its projected screen-space size is large.
 //   We approximate this with: metric = nodeEdgeLen / distToNearestPoint.

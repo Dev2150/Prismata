@@ -113,7 +113,7 @@ float4 triplanar(Texture2D tex, SamplerState samp,
     blendW /= (blendW.x + blendW.y + blendW.z + 1e-5f);
 
     float4 xProj = tex.Sample(samp, wpos.yz * scale);
-    float4 yProj = tex.Sample(samp, wpos.xz * scale);
+    float4 yProj = tex.Sample(samp, wpos.zx * scale);
     float4 zProj = tex.Sample(samp, wpos.xy * scale);
 
     return xProj * blendW.x + yProj * blendW.y + zProj * blendW.z;
@@ -136,18 +136,13 @@ float3 triplanarNormal(Texture2D normTex, SamplerState samp,
 
     // Sample all three projections; decode from [0,1] to [-1,+1]
     float3 nX = normTex.Sample(samp, wpos.yz * scale).rgb * 2.0f - 1.0f;
-    float3 nY = normTex.Sample(samp, wpos.xz * scale).rgb * 2.0f - 1.0f;
+    float3 nY = normTex.Sample(samp, wpos.zx * scale).rgb * 2.0f - 1.0f;
     float3 nZ = normTex.Sample(samp, wpos.xy * scale).rgb * 2.0f - 1.0f;
 
-    // OpenGL convention: Y is up in tangent space — matches NormalGL files.
-    // Reorient each tangent-space normal into world space using the face axis:
-    //   X face: tangent = (0,1,0), bitangent = (0,0,1), normal = (1,0,0)
-    //   Y face: tangent = (1,0,0), bitangent = (0,0,1), normal = (0,1,0)
-    //   Z face: tangent = (1,0,0), bitangent = (0,1,0), normal = (0,0,1)
-    // "Whiteout" trick: just swap components and sign appropriately.
-    float3 wsX = float3(nX.z, nX.y, nX.x);   // yz-plane sample
-    float3 wsY = float3(nY.x, nY.z, nY.y);   // xz-plane sample
-    float3 wsZ = float3(nZ.x, nZ.y, nZ.z);   // xy-plane sample
+    // Reorient each tangent-space normal into world space, accounting for negative axes
+    float3 wsX = float3(nX.z * sign(N.x), nX.x * sign(N.x), nX.y);
+    float3 wsY = float3(nY.y, nY.z * sign(N.y), nY.x * sign(N.y));
+    float3 wsZ = float3(nZ.x * sign(N.z), nZ.y, nZ.z * sign(N.z));
 
     return normalize(wsX * blendW.x + wsY * blendW.y + wsZ * blendW.z);
 }

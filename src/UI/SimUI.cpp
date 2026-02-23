@@ -186,19 +186,23 @@ void SimUI::drawTerrainHoverTooltip(const World& world) {
         ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "Plant: %s", pType);
         ImGui::Text("Nutrition: %.1f", p.nutrition);
     } else if (terrainHitValid) {
-    // Material colour swatch + name
-    static const ImVec4 matColors[] = {
-        {0.25f,0.55f,0.15f,1}, // Grass – green
-        {0.50f,0.50f,0.50f,1}, // Rock  – grey
-        {0.70f,0.60f,0.40f,1}, // Sand  – tan
-        {0.08f,0.35f,0.72f,1}, // Water – blue
-        {0.90f,0.95f,1.00f,1}, // Snow  – white
-    };
-    uint8_t m = std::min(terrainHitMat, (uint8_t)4);
+        // Material colour swatch + name
+        static const ImVec4 matColors[] = {
+            {0.25f,0.55f,0.15f,1}, // Grass – green
+            {0.50f,0.50f,0.50f,1}, // Rock  – grey
+            {0.70f,0.60f,0.40f,1}, // Sand  – tan
+            {0.08f,0.35f,0.72f,1}, // Water – blue
+            {0.90f,0.95f,1.00f,1}, // Snow  – white
+        };
+        uint8_t m = std::min(terrainHitMat, (uint8_t)4);
         ImGui::TextColored(matColors[m], "Terrain: %s", World::materialName(terrainHitMat));
-    ImGui::Text("Height : %.2f m", terrainHitPos.y);
-    ImGui::Text("Pos    : (%.1f, %.1f, %.1f)",
-                terrainHitPos.x, terrainHitPos.y, terrainHitPos.z);
+        // Height above sea level: noise displacement from the planet's base radius.
+        // terrainHitPos.y is world-space Y (planet center is at Y=-180000) so we
+        // use noiseHeight() which gives metres above the base sphere radius.
+        float heightAboveSea = g_planet_surface.noiseHeight(terrainHitPos);
+        ImGui::Text("Height : %.1f m", heightAboveSea);
+        ImGui::Text("Pos    : (%.1f, %.1f, %.1f)",
+                    terrainHitPos.x, terrainHitPos.y, terrainHitPos.z);
     }
 
     ImGui::End();
@@ -818,3 +822,4 @@ void SimUI::loadSettingsFromFile(const char* path, World& world, Renderer& rend)
         } catch (...) { /* skip malformed lines */ }
     }
 }
+

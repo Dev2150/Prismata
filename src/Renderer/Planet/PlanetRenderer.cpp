@@ -2,17 +2,15 @@
 // D3D11 initialisation, frame constant upload, and draw calls for the planet.
 
 #include "PlanetRenderer.hpp"
-#include "PlanetShaders.hpp"
 #include "PlanetNoise.hpp"
 #include "PlanetTextureLoader.hpp"
 #include <d3dcompiler.h>
-#include <cstring>
 #include <cmath>
 #include <vector>
-#include <algorithm>
 #include <wrl/client.h>
 
 #include "imgui.hpp"
+#include "Core/file_management.hpp"
 #include "Renderer/Renderer.hpp"
 #include "World/World.hpp"
 #include "World/World_Planet.hpp"
@@ -20,33 +18,67 @@
 using Microsoft::WRL::ComPtr;
 
 // ── Shader compilation helper ────────────────────────────────────────────────
-static ComPtr<ID3DBlob> compileShader(const char* src, const char* entry, const char* target) {
+static ComPtr<ID3DBlob> compileShaderFile(const wchar_t *filename, const char *entry, const char *target) {
     ComPtr<ID3DBlob> blob, err;
-    HRESULT hr = D3DCompile(src, strlen(src), nullptr, nullptr, nullptr,
-                            entry, target, D3DCOMPILE_OPTIMIZATION_LEVEL1, 0,
-                            blob.GetAddressOf(), err.GetAddressOf());
+
+    std::wstring name(filename);
+
+    // Check multiple directory levels to handle different IDE working directories
+    std::vector candidates = {
+        name,
+        L"Shaders/" + name,
+        L"../Shaders/" + name,
+        L"../../Shaders/" + name,
+        L"../../../Shaders/" + name
+    };
+
+    std::wstring finalPath = L"";
+
+    for (const auto& p : candidates) {
+        if (fileExists(p)) {
+            finalPath = p;
+            break;
+        }
+    }
+
+    if (finalPath.empty()) {
+        // Convert wchar_t* to char* for debug output
+        char buf[512];
+        size_t converted;
+        wcstombs_s(&converted, buf, filename, 512);
+
+        std::string msg = "FATAL: Shader file not found: " + std::string(buf) + "\n";
+        OutputDebugStringA(msg.c_str());
+        return nullptr;
+    }
+
+    HRESULT hr = D3DCompileFromFile(finalPath.c_str(), nullptr, nullptr, entry, target,
+                                        D3DCOMPILE_OPTIMIZATION_LEVEL1, 0,
+                                        blob.GetAddressOf(), err.GetAddressOf());
     if (FAILED(hr)) {
         if (err)
-            OutputDebugStringA((const char*)err->GetBufferPointer());
+            OutputDebugStringA((const char *) err->GetBufferPointer());
+        else
+            OutputDebugStringA("Unknown D3DCompileFromFile error.\n");
         return nullptr;
     }
     return blob;
 }
 
 // ── init ─────────────────────────────────────────────────────────────────────
-bool PlanetRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* c,
-                          const PlanetConfig& config) {
+bool PlanetRenderer::init(ID3D11Device *dev, ID3D11DeviceContext *c,
+                          const PlanetConfig &config) {
     device = dev;
-    ctx    = c;
-    cfg    = config;
+    ctx = c;
+    cfg = config;
 
     // Build the quadtree (allocates 6 root nodes, no GPU buffers yet)
     tree = new PlanetQuadTree(cfg);
 
-    if (!compileShaders())     return false;
-    if (!createBuffers())      return false;
-    if (!createAtmosphere())   return false;
-    if (!createSunQuad())      return false;
+    if (!compileShaders()) return false;
+    if (!createBuffers()) return false;
+    if (!createAtmosphere()) return false;
+    if (!createSunQuad()) return false;
     if (!createRenderStates()) return false;
     if (!createTextureSampler()) return false;
 
@@ -66,42 +98,41 @@ bool PlanetRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* c,
 //   Sand  → t1/t5/t9/t13
 //   Rock  → t2/t6/t10/t14
 //   Snow  → t3/t7/t11/t15
-bool PlanetRenderer::loadTextures(const wchar_t* dir)
-{
+bool PlanetRenderer::loadTextures(const wchar_t *dir) {
     // CoInitializeEx is idempotent on the same thread; safe to call multiple times.
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 
     struct TexEntry {
-        int         slot;
-        bool        isColor;   // true → sRGB; false → linear
-        const wchar_t* file;
+        int slot;
+        bool isColor; // true → sRGB; false → linear
+        const wchar_t *file;
     };
 
     const TexEntry entries[] = {
         // ── Colour (sRGB) ───────────────────────────────────────────────────
-        {  0, true,  L"Grass_1K-JPG_Color.jpg"    },
-        {  1, true,  L"Sand_1K-JPG_Color.jpg"     },
-        {  2, true,  L"Rock_1K-JPG_Color.jpg"     },
-        {  3, true,  L"Snow_1K-JPG_Color.jpg"     },
+        {0, true, L"Grass_1K-JPG_Color.jpg"},
+        {1, true, L"Sand_1K-JPG_Color.jpg"},
+        {2, true, L"Rock_1K-JPG_Color.jpg"},
+        {3, true, L"Snow_1K-JPG_Color.jpg"},
         // ── Normal GL (linear, Y-up) ────────────────────────────────────────
-        {  4, false, L"Grass_1K-JPG_NormalGL.jpg" },
-        {  5, false, L"Sand_1K-JPG_NormalGL.jpg"  },
-        {  6, false, L"Rock_1K-JPG_NormalGL.jpg"  },
-        {  7, false, L"Snow_1K-JPG_NormalGL.jpg"  },
+        {4, false, L"Grass_1K-JPG_NormalGL.jpg"},
+        {5, false, L"Sand_1K-JPG_NormalGL.jpg"},
+        {6, false, L"Rock_1K-JPG_NormalGL.jpg"},
+        {7, false, L"Snow_1K-JPG_NormalGL.jpg"},
         // ── AO (linear) ─────────────────────────────────────────────────────
-        {  8, false, L"Grass_1K-JPG_AmbientOcclusion.jpg" },
-        {  9, false, L"Sand_1K-JPG_AmbientOcclusion.jpg"  },
-        { 10, false, L"Rock_1K-JPG_AmbientOcclusion.jpg"  },
-        { 11, false, L"Snow_1K-JPG_AmbientOcclusion.jpg"  },
+        {8, false, L"Grass_1K-JPG_AmbientOcclusion.jpg"},
+        {9, false, L"Sand_1K-JPG_AmbientOcclusion.jpg"},
+        {10, false, L"Rock_1K-JPG_AmbientOcclusion.jpg"},
+        {11, false, L"Snow_1K-JPG_AmbientOcclusion.jpg"},
         // ── Roughness (linear) ──────────────────────────────────────────────
-        { 12, false, L"Grass_1K-JPG_Roughness.jpg" },
-        { 13, false, L"Sand_1K-JPG_Roughness.jpg"  },
-        { 14, false, L"Rock_1K-JPG_Roughness.jpg"  },
-        { 15, false, L"Snow_1K-JPG_Roughness.jpg"  },
+        {12, false, L"Grass_1K-JPG_Roughness.jpg"},
+        {13, false, L"Sand_1K-JPG_Roughness.jpg"},
+        {14, false, L"Rock_1K-JPG_Roughness.jpg"},
+        {15, false, L"Snow_1K-JPG_Roughness.jpg"},
     };
 
     int loaded = 0;
-    for (const auto& e : entries) {
+    for (const auto &e: entries) {
         // Build full path
         std::wstring fullPath = std::wstring(dir) + e.file;
 
@@ -127,7 +158,7 @@ bool PlanetRenderer::loadTextures(const wchar_t* dir)
     texturesLoaded = (texSRVs[0] && texSRVs[1] && texSRVs[2] && texSRVs[3]);
 
     char buf[64];
-    sprintf_s(buf, "PlanetRenderer: %d/%d textures loaded\n", loaded, (int)std::size(entries));
+    sprintf_s(buf, "PlanetRenderer: %d/%d textures loaded\n", loaded, (int) std::size(entries));
     OutputDebugStringA(buf);
 
     return texturesLoaded;
@@ -136,27 +167,25 @@ bool PlanetRenderer::loadTextures(const wchar_t* dir)
 // ── createTextureSampler ──────────────────────────────────────────────────────
 // Creates an anisotropic (up to 16×) wrap sampler for the terrain textures.
 // Anisotropic filtering is important on terrain viewed at grazing angles.
-bool PlanetRenderer::createTextureSampler()
-{
+bool PlanetRenderer::createTextureSampler() {
     D3D11_SAMPLER_DESC sd{};
-    sd.Filter         = D3D11_FILTER_ANISOTROPIC;
-    sd.AddressU       = D3D11_TEXTURE_ADDRESS_WRAP;
-    sd.AddressV       = D3D11_TEXTURE_ADDRESS_WRAP;
-    sd.AddressW       = D3D11_TEXTURE_ADDRESS_WRAP;
-    sd.MaxAnisotropy  = 16;
+    sd.Filter = D3D11_FILTER_ANISOTROPIC;
+    sd.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+    sd.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+    sd.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+    sd.MaxAnisotropy = 16;
     sd.ComparisonFunc = D3D11_COMPARISON_NEVER;
-    sd.MinLOD         = 0.f;
-    sd.MaxLOD         = D3D11_FLOAT32_MAX;
+    sd.MinLOD = 0.f;
+    sd.MaxLOD = D3D11_FLOAT32_MAX;
     return SUCCEEDED(device->CreateSamplerState(&sd, texSampler.GetAddressOf()));
 }
 
 // ── bindTerrainTextures / unbindTerrainTextures ───────────────────────────────
-void PlanetRenderer::bindTerrainTextures()
-{
+void PlanetRenderer::bindTerrainTextures() {
     // Build a flat array of raw SRV pointers for a single SetShaderResources call
-    ID3D11ShaderResourceView* srvs[TEX_COUNT] = {};
+    ID3D11ShaderResourceView *srvs[TEX_COUNT] = {};
     for (int i = 0; i < TEX_COUNT; i++)
-        srvs[i] = texSRVs[i].Get();   // nullptr if not loaded (HLSL reads 0)
+        srvs[i] = texSRVs[i].Get(); // nullptr if not loaded (HLSL reads 0)
 
     ctx->PSSetShaderResources(0, TEX_COUNT, srvs);
 
@@ -164,62 +193,61 @@ void PlanetRenderer::bindTerrainTextures()
     ctx->PSSetSamplers(0, 1, texSampler.GetAddressOf());
 }
 
-void PlanetRenderer::unbindTerrainTextures()
-{
+void PlanetRenderer::unbindTerrainTextures() {
     // Unbind all 16 slots so other draw passes don't accidentally read stale SRVs
-    ID3D11ShaderResourceView* nullSRVs[TEX_COUNT] = {};
+    ID3D11ShaderResourceView *nullSRVs[TEX_COUNT] = {};
     ctx->PSSetShaderResources(0, TEX_COUNT, nullSRVs);
 }
 
 // ── compileShaders ────────────────────────────────────────────────────────────
 bool PlanetRenderer::compileShaders() {
     // ── Planet terrain shader ─────────────────────────────────────────────────
-    auto tvs = compileShader(PLANET_HLSL, "VSMain", "vs_5_0");
-    auto tps = compileShader(PLANET_HLSL, "PSMain", "ps_5_0");
+    auto tvs = compileShaderFile(L"Planet.hlsl", "VSMain", "vs_5_0");
+    auto tps = compileShaderFile(L"Planet.hlsl", "PSMain", "ps_5_0");
     if (!tvs || !tps) return false;
 
     device->CreateVertexShader(tvs->GetBufferPointer(), tvs->GetBufferSize(), nullptr, terrainVS.GetAddressOf());
-    device->CreatePixelShader (tps->GetBufferPointer(), tps->GetBufferSize(), nullptr, terrainPS.GetAddressOf());
+    device->CreatePixelShader(tps->GetBufferPointer(), tps->GetBufferSize(), nullptr, terrainPS.GetAddressOf());
 
     // Input layout matching PlanetVertex: pos(3), nrm(3), uv(2), height(1), pad(1)
     D3D11_INPUT_ELEMENT_DESC ld[] = {
-        {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0,  0, D3D11_INPUT_PER_VERTEX_DATA, 0},
-        {"NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
-        {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,       0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0},
-        {"TEXCOORD", 1, DXGI_FORMAT_R32_FLOAT,          0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
-        {"TEXCOORD", 2, DXGI_FORMAT_R32_FLOAT,          0, 36, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 1, DXGI_FORMAT_R32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 2, DXGI_FORMAT_R32_FLOAT, 0, 36, D3D11_INPUT_PER_VERTEX_DATA, 0},
     };
     device->CreateInputLayout(ld, 5, tvs->GetBufferPointer(), tvs->GetBufferSize(), layout.GetAddressOf());
 
     // ── Atmosphere shell shader ───────────────────────────────────────────────
-    auto avs = compileShader(PLANET_ATMO_HLSL, "VSAtmo", "vs_5_0");
-    auto aps = compileShader(PLANET_ATMO_HLSL, "PSAtmo", "ps_5_0");
+    auto avs = compileShaderFile(L"PlanetAtmo.hlsl", "VSAtmo", "vs_5_0");
+    auto aps = compileShaderFile(L"PlanetAtmo.hlsl", "PSAtmo", "ps_5_0");
     if (!avs || !aps) return false;
 
     device->CreateVertexShader(avs->GetBufferPointer(), avs->GetBufferSize(), nullptr, atmoVS.GetAddressOf());
-    device->CreatePixelShader (aps->GetBufferPointer(), aps->GetBufferSize(), nullptr, atmoPS.GetAddressOf());
+    device->CreatePixelShader(aps->GetBufferPointer(), aps->GetBufferSize(), nullptr, atmoPS.GetAddressOf());
 
     // ── Sun billboard ─────────────────────────────────────────────────────────
-    auto svs = compileShader(SUN_HLSL, "SunVS", "vs_5_0");
-    auto sps = compileShader(SUN_HLSL, "SunPS", "ps_5_0");
+    auto svs = compileShaderFile(L"Sun.hlsl", "SunVS", "vs_5_0");
+    auto sps = compileShaderFile(L"Sun.hlsl", "SunPS", "ps_5_0");
     if (!svs || !sps) return false;
 
     device->CreateVertexShader(svs->GetBufferPointer(), svs->GetBufferSize(), nullptr, sunVS.GetAddressOf());
-    device->CreatePixelShader (sps->GetBufferPointer(), sps->GetBufferSize(), nullptr, sunPS.GetAddressOf());
+    device->CreatePixelShader(sps->GetBufferPointer(), sps->GetBufferSize(), nullptr, sunPS.GetAddressOf());
 
     D3D11_INPUT_ELEMENT_DESC sunLD[] = {
         {"POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
     };
     device->CreateInputLayout(sunLD, 1, svs->GetBufferPointer(), svs->GetBufferSize(), sunLayout.GetAddressOf());
-    
+
     // ── Star shader ───────────────────────────────────────────────────────────
-    auto stvs = compileShader(STAR_HLSL, "StarVS", "vs_5_0");
-    auto stps = compileShader(STAR_HLSL, "StarPS", "ps_5_0");
+    auto stvs = compileShaderFile(L"Star.hlsl", "StarVS", "vs_5_0");
+    auto stps = compileShaderFile(L"Star.hlsl", "StarPS", "ps_5_0");
     if (!stvs || !stps) return false;
     device->CreateVertexShader(stvs->GetBufferPointer(), stvs->GetBufferSize(), nullptr, starVS.GetAddressOf());
-    device->CreatePixelShader (stps->GetBufferPointer(), stps->GetBufferSize(), nullptr, starPS.GetAddressOf());
+    device->CreatePixelShader(stps->GetBufferPointer(), stps->GetBufferSize(), nullptr, starPS.GetAddressOf());
 
-        
+
     return true;
 }
 
@@ -228,9 +256,9 @@ bool PlanetRenderer::createBuffers() {
     D3D11_BUFFER_DESC bd{};
 
     // Frame constants (b0) — same layout as the world renderer's FrameConstants
-    bd.ByteWidth      = sizeof(FrameConstants);
-    bd.Usage          = D3D11_USAGE_DYNAMIC;
-    bd.BindFlags      = D3D11_BIND_CONSTANT_BUFFER;
+    bd.ByteWidth = sizeof(FrameConstants);
+    bd.Usage = D3D11_USAGE_DYNAMIC;
+    bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
     bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     if (FAILED(device->CreateBuffer(&bd, nullptr, cbFrame.GetAddressOf()))) return false;
 
@@ -253,9 +281,9 @@ bool PlanetRenderer::createAtmosphere() {
     verts.reserve(stacks * slices * 3);
 
     for (int i = 0; i <= stacks; i++) {
-        float phi = 3.14159265f * (float)i / stacks;   // 0 → π  (pole to pole)
+        float phi = 3.14159265f * (float) i / stacks; // 0 → π  (pole to pole)
         for (int j = 0; j <= slices; j++) {
-            float theta = 2.f * 3.14159265f * (float)j / slices;
+            float theta = 2.f * 3.14159265f * (float) j / slices;
             float x = std::sin(phi) * std::cos(theta);
             float y = std::cos(phi);
             float z = std::sin(phi) * std::sin(theta);
@@ -273,36 +301,41 @@ bool PlanetRenderer::createAtmosphere() {
             uint32_t TR = TL + 1;
             uint32_t BL = TL + rowLen;
             uint32_t BR = BL + 1;
-            idxs.push_back(TL); idxs.push_back(TR); idxs.push_back(BL);
-            idxs.push_back(TR); idxs.push_back(BR); idxs.push_back(BL);
+            idxs.push_back(TL);
+            idxs.push_back(TR);
+            idxs.push_back(BL);
+            idxs.push_back(TR);
+            idxs.push_back(BR);
+            idxs.push_back(BL);
         }
     }
 
-    D3D11_BUFFER_DESC bd{}; D3D11_SUBRESOURCE_DATA sd{};
-    bd.Usage     = D3D11_USAGE_IMMUTABLE;
+    D3D11_BUFFER_DESC bd{};
+    D3D11_SUBRESOURCE_DATA sd{};
+    bd.Usage = D3D11_USAGE_IMMUTABLE;
     bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-    bd.ByteWidth = (UINT)(verts.size() * sizeof(float));
-    sd.pSysMem   = verts.data();
+    bd.ByteWidth = (UINT) (verts.size() * sizeof(float));
+    sd.pSysMem = verts.data();
     if (FAILED(device->CreateBuffer(&bd, &sd, atmoVB.GetAddressOf()))) return false;
 
     bd.BindFlags = D3D11_BIND_INDEX_BUFFER;
-    bd.ByteWidth = (UINT)(idxs.size() * sizeof(uint32_t));
-    sd.pSysMem   = idxs.data();
+    bd.ByteWidth = (UINT) (idxs.size() * sizeof(uint32_t));
+    sd.pSysMem = idxs.data();
     if (FAILED(device->CreateBuffer(&bd, &sd, atmoIB.GetAddressOf()))) return false;
 
-    atmoIdxCount = (int)idxs.size();
+    atmoIdxCount = (int) idxs.size();
     return true;
 }
 
 // ── createSunQuad ─────────────────────────────────────────────────────────────
 // Simple 4-corner quad: TL, TR, BL, BR  (TRIANGLE_STRIP winding)
 bool PlanetRenderer::createSunQuad() {
-    float quad[] = { -0.5f, 0.5f,   0.5f, 0.5f,   -0.5f, -0.5f,   0.5f, -0.5f };
+    float quad[] = {-0.5f, 0.5f, 0.5f, 0.5f, -0.5f, -0.5f, 0.5f, -0.5f};
     D3D11_BUFFER_DESC bd{};
-    bd.ByteWidth      = sizeof(quad);
-    bd.Usage          = D3D11_USAGE_IMMUTABLE;
-    bd.BindFlags      = D3D11_BIND_VERTEX_BUFFER;
-    D3D11_SUBRESOURCE_DATA sd{ quad };
+    bd.ByteWidth = sizeof(quad);
+    bd.Usage = D3D11_USAGE_IMMUTABLE;
+    bd.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    D3D11_SUBRESOURCE_DATA sd{quad};
     return SUCCEEDED(device->CreateBuffer(&bd, &sd, sunQuadVB.GetAddressOf()));
 }
 
@@ -311,41 +344,42 @@ bool PlanetRenderer::createRenderStates() {
     D3D11_RASTERIZER_DESC rd{};
     rd.DepthClipEnable = TRUE;
 
-    rd.FillMode = D3D11_FILL_SOLID; rd.CullMode = D3D11_CULL_NONE;
+    rd.FillMode = D3D11_FILL_SOLID;
+    rd.CullMode = D3D11_CULL_NONE;
     device->CreateRasterizerState(&rd, rsSolid.GetAddressOf());
 
     rd.CullMode = D3D11_CULL_NONE;
     device->CreateRasterizerState(&rd, rsSolidNoCull.GetAddressOf());
 
     D3D11_DEPTH_STENCIL_DESC dsd{};
-    dsd.DepthEnable    = TRUE;
+    dsd.DepthEnable = TRUE;
     dsd.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
-    dsd.DepthFunc      = D3D11_COMPARISON_LESS;
+    dsd.DepthFunc = D3D11_COMPARISON_LESS;
     device->CreateDepthStencilState(&dsd, dssDepth.GetAddressOf());
 
     dsd.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
     device->CreateDepthStencilState(&dsd, dssNoWrite.GetAddressOf());
 
     // Sun: skip depth test entirely so it always appears in the sky
-    dsd.DepthEnable    = FALSE;
+    dsd.DepthEnable = FALSE;
     dsd.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
     device->CreateDepthStencilState(&dsd, dssNoDepth.GetAddressOf());
 
     // Standard alpha blend for atmosphere
     D3D11_BLEND_DESC bd{};
-    auto& rt = bd.RenderTarget[0];
-    rt.BlendEnable    = TRUE;
-    rt.SrcBlend       = D3D11_BLEND_SRC_ALPHA;
-    rt.DestBlend      = D3D11_BLEND_INV_SRC_ALPHA;
-    rt.BlendOp        = D3D11_BLEND_OP_ADD;
-    rt.SrcBlendAlpha  = D3D11_BLEND_ONE;
+    auto &rt = bd.RenderTarget[0];
+    rt.BlendEnable = TRUE;
+    rt.SrcBlend = D3D11_BLEND_SRC_ALPHA;
+    rt.DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+    rt.BlendOp = D3D11_BLEND_OP_ADD;
+    rt.SrcBlendAlpha = D3D11_BLEND_ONE;
     rt.DestBlendAlpha = D3D11_BLEND_ZERO;
-    rt.BlendOpAlpha   = D3D11_BLEND_OP_ADD;
+    rt.BlendOpAlpha = D3D11_BLEND_OP_ADD;
     rt.RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
     device->CreateBlendState(&bd, bsAlpha.GetAddressOf());
 
     // Additive blend: src + dst  (great for glowing sun disc)
-    rt.SrcBlend  = D3D11_BLEND_SRC_ALPHA;
+    rt.SrcBlend = D3D11_BLEND_SRC_ALPHA;
     rt.DestBlend = D3D11_BLEND_ONE;
     device->CreateBlendState(&bd, bsAdditive.GetAddressOf());
 
@@ -357,50 +391,55 @@ bool PlanetRenderer::createRenderStates() {
 
 // ── update ────────────────────────────────────────────────────────────────────
 // Drives the quadtree LOD split/merge. Must run before render().
-void PlanetRenderer::update(const Camera& cam) {
+void PlanetRenderer::update(const Camera &cam) {
     Vec3 cp = {cam.pos.x, cam.pos.y, cam.pos.z};
     tree->update(cp, device.Get(), ctx.Get());
-    totalNodes  = tree->totalNodes();
+    totalNodes = tree->totalNodes();
     totalLeaves = tree->totalLeaves();
 }
 
 // ── uploadFrameConstants ──────────────────────────────────────────────────────
 // Populates b0 with camera, lighting, and fog data.
 // Uses a simple sun model (same as world terrain) so the planet matches lighting.
-void PlanetRenderer::uploadFrameConstants(const World& world, const Renderer& rend, float aspect) {
+void PlanetRenderer::uploadFrameConstants(const World &world, const Renderer &rend, float aspect) {
     Mat4 view = rend.camera.viewMatrix();
 
     // Use a planet-specific projection with a large far plane.
     // The planet centre is ~1840 units below the camera; the far side is ~2840 units.
     // The standard camera far plane of 1000 clips most of the sphere away.
     // near=10 is fine here because the planet surface is never closer than ~800 units.
-    float planetFar = cfg.radius * 4.f + 1000.f;   // e.g. 5000 for radius=1000
+    float planetFar = cfg.radius * 4.f + 1000.f; // e.g. 5000 for radius=1000
     Mat4 proj = Mat4::perspectiveRH(
         rend.camera.fovY * 3.14159265f / 180.f, aspect, 10.f, planetFar);
 
-    Mat4 vp   = (view * proj).transposed();
+    Mat4 vp = (view * proj).transposed();
 
     D3D11_MAPPED_SUBRESOURCE ms{};
     ctx->Map(cbFrame.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &ms);
-    auto* fc = (FrameConstants*)ms.pData;
+    auto *fc = (FrameConstants *) ms.pData;
 
     memcpy(fc->viewProj, vp.m, sizeof(vp.m));
-    fc->camPos[0] = rend.camera.pos.x; fc->camPos[1] = rend.camera.pos.y;
-    fc->camPos[2] = rend.camera.pos.z; fc->camPos[3] = 0.f;
+    fc->camPos[0] = rend.camera.pos.x;
+    fc->camPos[1] = rend.camera.pos.y;
+    fc->camPos[2] = rend.camera.pos.z;
+    fc->camPos[3] = 0.f;
 
     // Sun position / colour (simplified version of the world's computeDayNightLighting)
     const float PI = 3.14159265f;
-    float phase    = world.timeOfDay() * 2.f * PI;
-    float elev     = -std::cos(phase);
+    float phase = world.timeOfDay() * 2.f * PI;
+    float elev = -std::cos(phase);
 
     fc->lightDir[0] = std::sin(phase) * 0.6f;
     fc->lightDir[1] = -elev;
-    fc->lightDir[2] = 0.3f; fc->lightDir[3] = 0.f;
-    float ll = std::sqrt(fc->lightDir[0]*fc->lightDir[0]
-                       + fc->lightDir[1]*fc->lightDir[1]
-                       + fc->lightDir[2]*fc->lightDir[2]);
+    fc->lightDir[2] = 0.3f;
+    fc->lightDir[3] = 0.f;
+    float ll = std::sqrt(fc->lightDir[0] * fc->lightDir[0]
+                         + fc->lightDir[1] * fc->lightDir[1]
+                         + fc->lightDir[2] * fc->lightDir[2]);
     if (ll > 1e-6f) {
-        fc->lightDir[0]/=ll; fc->lightDir[1]/=ll; fc->lightDir[2]/=ll;
+        fc->lightDir[0] /= ll;
+        fc->lightDir[1] /= ll;
+        fc->lightDir[2] /= ll;
     }
 
     fc->sunColor[0] = 1.00f;
@@ -421,9 +460,11 @@ void PlanetRenderer::uploadFrameConstants(const World& world, const Renderer& re
     if (rend.showFogOfWar && rend.playerID != INVALID_ID) {
         auto it = world.idToIndex.find(rend.playerID);
         if (it != world.idToIndex.end()) {
-            const Creature& pc = world.creatures[it->second];
-            fc->fowData[0] = pc.pos.x; fc->fowData[1] = pc.pos.y;
-            fc->fowData[2] = pc.pos.z; fc->fowData[3] = pc.genome.visionRange();
+            const Creature &pc = world.creatures[it->second];
+            fc->fowData[0] = pc.pos.x;
+            fc->fowData[1] = pc.pos.y;
+            fc->fowData[2] = pc.pos.z;
+            fc->fowData[3] = pc.genome.visionRange();
 
             Vec3 facing = {std::sin(pc.yaw), 0.f, std::cos(pc.yaw)};
             facing = g_planet_surface.projectToTangent(pc.pos, facing).normalised();
@@ -444,15 +485,15 @@ void PlanetRenderer::uploadFrameConstants(const World& world, const Renderer& re
 void PlanetRenderer::uploadPlanetConstants(float timeOfDay) {
     D3D11_MAPPED_SUBRESOURCE ms{};
     ctx->Map(cbPlanet.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &ms);
-    auto* pc = (PlanetConstants*)ms.pData;
+    auto *pc = (PlanetConstants *) ms.pData;
 
     // Atmosphere: pale blue tint, thickness ~8% of planet radius
     pc->atmosphereColor[0] = 0.35f;
     pc->atmosphereColor[1] = 0.58f;
     pc->atmosphereColor[2] = 0.92f;
-    pc->atmosphereColor[3] = cfg.radius * 0.08f;  // fog thickness
+    pc->atmosphereColor[3] = cfg.radius * 0.08f; // fog thickness
 
-    pc->planetParams[0] = cfg.center.y;    // sea level Y
+    pc->planetParams[0] = cfg.center.y; // sea level Y
     pc->planetParams[1] = cfg.snowLine;
     pc->planetParams[2] = 0.f;
     pc->planetParams[3] = 0.f;
@@ -499,15 +540,15 @@ void PlanetRenderer::renderPatches() {
     // Bind textures + sampler before the draw calls
     bindTerrainTextures();
 
-    std::vector<PlanetNode*> leaves;
+    std::vector<PlanetNode *> leaves;
     tree->collectLeaves(leaves);
 
     UINT stride = sizeof(PlanetVertex), offset = 0;
-    for (PlanetNode* leaf : leaves) {
+    for (PlanetNode *leaf: leaves) {
         if (!leaf->vb || !leaf->ib || leaf->idxCount == 0) continue;
         ctx->IASetVertexBuffers(0, 1, &leaf->vb, &stride, &offset);
         ctx->IASetIndexBuffer(leaf->ib, DXGI_FORMAT_R32_UINT, 0);
-        ctx->DrawIndexed((UINT)leaf->idxCount, 0, 0);
+        ctx->DrawIndexed((UINT) leaf->idxCount, 0, 0);
     }
 
     // Unbind textures so subsequent passes don't read stale slots
@@ -517,15 +558,15 @@ void PlanetRenderer::renderPatches() {
 // ── renderAtmosphere ─────────────────────────────────────────────────────────
 // Draws the transparent atmospheric shell last (after opaque planet surface)
 // so additive blending composites correctly over the terrain.
-void PlanetRenderer::renderAtmosphere(const Camera& /*cam*/) {
+void PlanetRenderer::renderAtmosphere(const Camera & /*cam*/) {
     if (!showAtmosphere || !atmoVB.Get() || wireframe) return;
 
     ctx->RSSetState(rsSolidNoCull.Get());
-    ctx->OMSetDepthStencilState(dssNoWrite.Get(), 0);  // depth test but no write (overlay)
+    ctx->OMSetDepthStencilState(dssNoWrite.Get(), 0); // depth test but no write (overlay)
     float bf[4] = {};
     ctx->OMSetBlendState(bsAlpha.Get(), bf, 0xFFFFFFFF);
 
-    ctx->IASetInputLayout(layout.Get());          // pos-only, reuse planet layout (first element)
+    ctx->IASetInputLayout(layout.Get()); // pos-only, reuse planet layout (first element)
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     ctx->VSSetShader(atmoVS.Get(), nullptr, 0);
     ctx->PSSetShader(atmoPS.Get(), nullptr, 0);
@@ -533,7 +574,7 @@ void PlanetRenderer::renderAtmosphere(const Camera& /*cam*/) {
     UINT stride = sizeof(float) * 3, offset = 0;
     ctx->IASetVertexBuffers(0, 1, atmoVB.GetAddressOf(), &stride, &offset);
     ctx->IASetIndexBuffer(atmoIB.Get(), DXGI_FORMAT_R32_UINT, 0);
-    ctx->DrawIndexed((UINT)atmoIdxCount, 0, 0);
+    ctx->DrawIndexed((UINT) atmoIdxCount, 0, 0);
 
     ctx->OMSetBlendState(bsOpaque.Get(), bf, 0xFFFFFFFF);
     ctx->OMSetDepthStencilState(dssDepth.Get(), 0);
@@ -548,7 +589,7 @@ void PlanetRenderer::renderSun() {
     if (!showSun || !sunQuadVB.Get() || wireframe) return;
 
     ctx->RSSetState(rsSolidNoCull.Get());
-    ctx->OMSetDepthStencilState(dssNoWrite.Get(), 0);       // test against terrain, don't write
+    ctx->OMSetDepthStencilState(dssNoWrite.Get(), 0); // test against terrain, don't write
     float bf[4] = {};
     ctx->OMSetBlendState(bsAdditive.Get(), bf, 0xFFFFFFFF); // additive for the glow
 
@@ -584,7 +625,7 @@ void PlanetRenderer::renderStars() {
     UINT stride = sizeof(float) * 3, offset = 0;
     ctx->IASetVertexBuffers(0, 1, atmoVB.GetAddressOf(), &stride, &offset);
     ctx->IASetIndexBuffer(atmoIB.Get(), DXGI_FORMAT_R32_UINT, 0);
-    ctx->DrawIndexed((UINT)atmoIdxCount, 0, 0);
+    ctx->DrawIndexed((UINT) atmoIdxCount, 0, 0);
 
     // Restore states
     ctx->OMSetBlendState(bsOpaque.Get(), bf, 0xFFFFFFFF);
@@ -593,14 +634,14 @@ void PlanetRenderer::renderStars() {
 }
 
 // ── render ────────────────────────────────────────────────────────────────────
-void PlanetRenderer::render(const World& world, const Renderer& rend, float aspect) {
+void PlanetRenderer::render(const World &world, const Renderer &rend, float aspect) {
     uploadFrameConstants(world, rend, aspect);
     uploadPlanetConstants(world.timeOfDay());
 
-    renderPatches();       // opaque terrain
+    renderPatches(); // opaque terrain
     renderAtmosphere(rend.camera); // transparent atmosphere shell
-    renderSun();           // additive sun disc (always last so glow is on top)
-    renderStars();         // stars in the background
+    renderSun(); // additive sun disc (always last so glow is on top)
+    renderStars(); // stars in the background
 }
 
 // ── drawDebugUI ───────────────────────────────────────────────────────────────
@@ -609,15 +650,15 @@ void PlanetRenderer::drawDebugUI() {
     ImGui::SeparatorText("Planet QuadTree");
     ImGui::Text("Nodes (total / leaves): %d / %d", totalNodes, totalLeaves);
 
-    ImGui::Checkbox("Wireframe##planet",     &wireframe);
-    ImGui::Checkbox("Atmosphere##planet",    &showAtmosphere);
-    ImGui::Checkbox("Sun##planet",        &showSun);
+    ImGui::Checkbox("Wireframe##planet", &wireframe);
+    ImGui::Checkbox("Atmosphere##planet", &showAtmosphere);
+    ImGui::Checkbox("Sun##planet", &showSun);
 
     ImGui::SeparatorText("Terrain Textures");
     if (texturesLoaded) {
-        ImGui::TextColored({0.3f,1.f,0.3f,1.f}, "Textures: loaded");
+        ImGui::TextColored({0.3f, 1.f, 0.3f, 1.f}, "Textures: loaded");
     } else {
-        ImGui::TextColored({1.f,0.6f,0.2f,1.f}, "Textures: not found (procedural fallback)");
+        ImGui::TextColored({1.f, 0.6f, 0.2f, 1.f}, "Textures: not found (procedural fallback)");
         ImGui::TextDisabled("Place files in Textures/ beside the EXE.");
         ImGui::TextDisabled("E.g. Textures/Grass_1K-JPG_Color.jpg");
     }
@@ -626,8 +667,8 @@ void PlanetRenderer::drawDebugUI() {
     ImGui::SliderFloat("Triplanar Scale##planet", &triplanarScale, 0.00001f, 0.001f, "%.6f");
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Controls texture tile repeat size.\n"
-                          "Smaller = larger tiles (fewer repeats per km).\n"
-                          "Default 0.00015 gives ~1 tile per ~6.7 km.");
+            "Smaller = larger tiles (fewer repeats per km).\n"
+            "Default 0.00015 gives ~1 tile per ~6.7 km.");
 
     // Reload textures at runtime (useful for hot-reloading during development)
     if (ImGui::Button("Reload Textures"))
@@ -637,17 +678,21 @@ void PlanetRenderer::drawDebugUI() {
     ImGui::SliderFloat("Split Threshold##planet", &cfg.splitThreshold, 0.3f, 3.f);
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Lower = finer LOD (more nodes, higher quality).\n"
-                          "Higher = coarser LOD (fewer nodes, faster rendering).");
+            "Higher = coarser LOD (fewer nodes, faster rendering).");
 
     ImGui::SliderInt("Max Depth##planet", &cfg.maxDepth, 4, 22);
     ImGui::SliderFloat("Height Scale##planet", &cfg.heightScale, 0.f, cfg.radius * 0.2f);
     ImGui::SliderFloat("Noise Frequency##planet", &cfg.noiseFrequency, 0.1f, 5.f);
 
     ImGui::TextDisabled("Planet radius: %.0f  Centre: (%.0f, %.0f, %.0f)",
-        cfg.radius, cfg.center.x, cfg.center.y, cfg.center.z);
+                        cfg.radius, cfg.center.x, cfg.center.y, cfg.center.z);
 }
 
 // ── shutdown ──────────────────────────────────────────────────────────────────
 void PlanetRenderer::shutdown() {
-    if (tree) { tree->shutdown(); delete tree; tree = nullptr; }
+    if (tree) {
+        tree->shutdown();
+        delete tree;
+        tree = nullptr;
+    }
 }

@@ -6,6 +6,9 @@
 #include <chrono>
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
+#include <iostream>
+
 #include "App/App_Globals.hpp"
 
 // FPS tracking: count rendered frames over a 0.5-second window
@@ -21,6 +24,10 @@ float displayUPS     = 0.f;
 int RunApplication()
 {
     ZoneScoped;
+
+    std::filesystem::path currentPath = std::filesystem::current_path();
+    std::cout << "The working directory is: " << currentPath << std::endl;
+
     // Make the process DPI-aware so the window and fonts render sharply on
     // high-DPI monitors. Must be called before any window is created.
     ImGui_ImplWin32_EnableDpiAwareness();
@@ -272,20 +279,9 @@ int RunApplication()
             }
         }
 
-        // ── Sky clear colour (space black near camera, atmospheric at edges) ──
+        // ── Sky clear colour (space black) ──
         {
-            float time_of_day = g_world.timeOfDay();   // [0,1)
-            float elev = -std::cos(time_of_day * 2.f * 3.14159265f); // -1=night, +1=noon
-
-            float skyNight[3]   = {0.00f, 0.00f, 0.02f};  // near-black space
-            float skyDay[3]     = {0.02f, 0.04f, 0.10f};  // very dark space blue
-
-            float t = std::max(0.f, std::min(1.f, (elev + 1.f) * 0.5f));
-            float r = skyNight[0] + (skyDay[0]-skyNight[0])*t;
-            float g = skyNight[1] + (skyDay[1]-skyNight[1])*t;
-            float b = skyNight[2] + (skyDay[2]-skyNight[2])*t;
-
-            const float cc[4] = {r, g, b, 1.f};
+            const float cc[4] = {0.0f, 0.0f, 0.01f, 1.f};
             g_pd3dDeviceContext->ClearRenderTargetView(g_mainRenderTargetView, cc);
         }
 

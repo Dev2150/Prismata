@@ -32,6 +32,12 @@ set(SOURCES
     src/Renderer/Planet/PlanetQuadTree.cpp
     src/Renderer/Planet/PlanetRenderer.cpp
     src/Renderer/Planet/PlanetTextureLoader.hpp
+    src/Shaders/Creature.hlsl
+    src/Shaders/Planet.hlsl
+    src/Shaders/PlanetAtmo.hlsl
+    src/Shaders/Simple.hlsl
+    src/Shaders/Star.hlsl
+    src/Shaders/Sun.hlsl
 
     # ImGui – place the imgui/ folder at the project root
     imgui/imgui.cpp
@@ -49,6 +55,18 @@ set(SOURCES
 )
 
 add_executable(KyberPlanet WIN32 ${SOURCES})
+
+# Copy folders to the build directory after compiling
+add_custom_command(TARGET KyberPlanet POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Shaders
+        ${CMAKE_CURRENT_BINARY_DIR}/Shaders
+)
+add_custom_command(TARGET KyberPlanet POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_CURRENT_SOURCE_DIR}/Textures
+        ${CMAKE_CURRENT_BINARY_DIR}/Textures
+)
 
 target_include_directories(KyberPlanet PRIVATE
     src/

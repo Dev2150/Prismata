@@ -24,7 +24,6 @@
 #include <cmath>
 #include <algorithm>
 #include <vector>
-#include <cstring>
 
 // ── Mesh build helper ─────────────────────────────────────────────────────────
 // Samples height at a UV position on a given face (no GPU, CPU-only).
@@ -229,8 +228,16 @@ void PlanetFaceTree::updateRec(PlanetNode* node, const Vec3& camPos,
             1.f - (cfg.radius / camDistFromCenter) *
                   (cfg.radius / camDistFromCenter)));
         if (dot < horizonCos - 0.15f) {
-            // Far side of planet: merge everything and stop
+            // Far side of planet: collapse children if any …
             if (node->isSplit) mergeNode(node);
+            // … and release this leaf's GPU mesh so it doesn't appear in collectLeaves.
+            // It will be rebuilt automatically when the node rotates back into view.
+            else if (node->meshBuilt) {
+                if (node->vb) { node->vb->Release(); node->vb = nullptr; }
+                if (node->ib) { node->ib->Release(); node->ib = nullptr; }
+                node->idxCount  = 0;
+                node->meshBuilt = false;
+            }
             return;
         }
     }

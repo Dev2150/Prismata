@@ -40,6 +40,24 @@ struct PlanetRenderer {
     ComPtr<ID3D11Buffer> atmoIB;
     int                  atmoIdxCount = 0;
 
+    // ── Terrain textures ──────────────────────────────────────────────────────
+    // Layout (t0–t15, matching HLSL registers):
+    //   t0  Grass  Color      t1  Sand  Color      t2  Rock  Color      t3  Snow  Color
+    //   t4  Grass  NormalGL   t5  Sand  NormalGL   t6  Rock  NormalGL   t7  Snow  NormalGL
+    //   t8  Grass  AO         t9  Sand  AO         t10 Rock  AO         t11 Snow  AO
+    //   t12 Grass  Roughness  t13 Sand  Roughness  t14 Rock  Roughness  t15 Snow  Roughness
+    static constexpr int TEX_COUNT = 16;
+    ComPtr<ID3D11ShaderResourceView> texSRVs[TEX_COUNT];
+
+    // Anisotropic sampler shared by all terrain texture slots
+    ComPtr<ID3D11SamplerState> texSampler;
+
+    // Whether textures loaded successfully (falls back to procedural colours if not)
+    bool texturesLoaded = false;
+
+    // Triplanar scale factor exposed to the debug UI (world-units per tile repeat)
+    float triplanarScale = 0.00015f;   // good default for a 100 000-unit-radius planet
+
     // Render states
     ComPtr<ID3D11RasterizerState> rsSolid;
     ComPtr<ID3D11RasterizerState> rsSolidNoCull; // atmosphere (no back-face cull)
@@ -66,6 +84,7 @@ struct PlanetRenderer {
     struct alignas(16) PlanetConstants {
         float atmosphereColor[4]; // rgb = atmosphere tint, w = thickness
         float planetParams[4];    // x = seaLevel, y = snowLine, zw unused
+        float texParams[4];         // x = triplanarScale, yzw unused
     };
 
     // ── Shared frame constants (identical to Renderer::FrameConstants) ────────
@@ -87,6 +106,12 @@ struct PlanetRenderer {
     // Create shaders, buffers, states. Call once after D3D11 device is ready.
     bool init(ID3D11Device* dev, ID3D11DeviceContext* c, const PlanetConfig& config);
 
+    // Load all terrain textures from a directory.
+    // dir should be the folder containing files named:
+    //   Grass_1K-JPG_Color.jpg, Sand_1K-JPG_NormalGL.jpg, etc.
+    // Returns true if at least the colour textures loaded.
+    bool loadTextures(const wchar_t* dir);
+
     // Update the quadtree LOD for the current camera position.
     // Must be called before render() each frame.
     void update(const Camera& cam);
@@ -107,6 +132,7 @@ private:
     bool createAtmosphere();
     bool createSunQuad();
     bool createRenderStates();
+    bool createTextureSampler();
 
     void uploadFrameConstants(const World& world, const Renderer& rend, float aspect);
     void uploadPlanetConstants(float timeOfDay);
@@ -115,7 +141,8 @@ private:
     void renderAtmosphere(const Camera& cam);
     void renderSun();
     void renderStars();
-
+    void bindTerrainTextures();
+    void unbindTerrainTextures();
 };
 
 // ── Global instance (declared in PlanetRenderer.cpp, extern here) ─────────────

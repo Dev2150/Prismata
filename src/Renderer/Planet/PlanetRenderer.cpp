@@ -4,6 +4,7 @@
 #include "PlanetRenderer.hpp"
 #include "PlanetShaders.hpp"
 #include "PlanetNoise.hpp"
+#include "PlanetTextureLoader.hpp"
 #include <d3dcompiler.h>
 #include <cstring>
 #include <cmath>
@@ -11,7 +12,7 @@
 #include <algorithm>
 #include <wrl/client.h>
 
-#include "imgui.hpp"   // for drawDebugUI
+#include "imgui.hpp"
 #include "Renderer/Renderer.hpp"
 #include "World/World.hpp"
 #include "World/World_Planet.hpp"
@@ -20,15 +21,13 @@ using Microsoft::WRL::ComPtr;
 
 // ── Shader compilation helper ────────────────────────────────────────────────
 static ComPtr<ID3DBlob> compileShader(const char* src, const char* entry, const char* target) {
-    ComPtr<ID3DBlob> blob;
-    ComPtr<ID3DBlob> err;
+    ComPtr<ID3DBlob> blob, err;
     HRESULT hr = D3DCompile(src, strlen(src), nullptr, nullptr, nullptr,
                             entry, target, D3DCOMPILE_OPTIMIZATION_LEVEL1, 0,
                             blob.GetAddressOf(), err.GetAddressOf());
     if (FAILED(hr)) {
-        if (err) {
+        if (err)
             OutputDebugStringA((const char*)err->GetBufferPointer());
-        }
         return nullptr;
     }
     return blob;
@@ -49,7 +48,127 @@ bool PlanetRenderer::init(ID3D11Device* dev, ID3D11DeviceContext* c,
     if (!createAtmosphere())   return false;
     if (!createSunQuad())      return false;
     if (!createRenderStates()) return false;
+    if (!createTextureSampler()) return false;
+
+    // Attempt to load textures from the executable's working directory.
+    // If the files aren't present the renderer falls back to procedural colours.
+    loadTextures(L"../textures/");
+
     return true;
+}
+
+// ── loadTextures ──────────────────────────────────────────────────────────────
+// Expected file naming convention: {dir}{Terrain}_1K-JPG_{Type}.jpg
+// E.g. "Textures/Grass_1K-JPG_Color.jpg"
+//
+// Biome–slot mapping:
+//   Grass → t0/t4/t8/t12
+//   Sand  → t1/t5/t9/t13
+//   Rock  → t2/t6/t10/t14
+//   Snow  → t3/t7/t11/t15
+bool PlanetRenderer::loadTextures(const wchar_t* dir)
+{
+    // CoInitializeEx is idempotent on the same thread; safe to call multiple times.
+    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+
+    struct TexEntry {
+        int         slot;
+        bool        isColor;   // true → sRGB; false → linear
+        const wchar_t* file;
+    };
+
+    const TexEntry entries[] = {
+        // ── Colour (sRGB) ───────────────────────────────────────────────────
+        {  0, true,  L"Grass_1K-JPG_Color.jpg"    },
+        {  1, true,  L"Sand_1K-JPG_Color.jpg"     },
+        {  2, true,  L"Rock_1K-JPG_Color.jpg"     },
+        {  3, true,  L"Snow_1K-JPG_Color.jpg"     },
+        // ── Normal GL (linear, Y-up) ────────────────────────────────────────
+        {  4, false, L"Grass_1K-JPG_NormalGL.jpg" },
+        {  5, false, L"Sand_1K-JPG_NormalGL.jpg"  },
+        {  6, false, L"Rock_1K-JPG_NormalGL.jpg"  },
+        {  7, false, L"Snow_1K-JPG_NormalGL.jpg"  },
+        // ── AO (linear) ─────────────────────────────────────────────────────
+        {  8, false, L"Grass_1K-JPG_AmbientOcclusion.jpg" },
+        {  9, false, L"Sand_1K-JPG_AmbientOcclusion.jpg"  },
+        { 10, false, L"Rock_1K-JPG_AmbientOcclusion.jpg"  },
+        { 11, false, L"Snow_1K-JPG_AmbientOcclusion.jpg"  },
+        // ── Roughness (linear) ──────────────────────────────────────────────
+        { 12, false, L"Grass_1K-JPG_Roughness.jpg" },
+        { 13, false, L"Sand_1K-JPG_Roughness.jpg"  },
+        { 14, false, L"Rock_1K-JPG_Roughness.jpg"  },
+        { 15, false, L"Snow_1K-JPG_Roughness.jpg"  },
+    };
+
+    int loaded = 0;
+    for (const auto& e : entries) {
+        // Build full path
+        std::wstring fullPath = std::wstring(dir) + e.file;
+
+        bool ok;
+        if (e.isColor)
+            ok = LoadColorTextureFromFile(device.Get(), ctx.Get(),
+                                          fullPath.c_str(), texSRVs[e.slot]);
+        else
+            ok = LoadTextureFromFile(device.Get(), ctx.Get(),
+                                     fullPath.c_str(), texSRVs[e.slot]);
+
+        if (ok) {
+            loaded++;
+        } else {
+            char buf[256];
+            sprintf_s(buf, "PlanetRenderer: failed to load texture slot %d: %S\n",
+                      e.slot, fullPath.c_str());
+            OutputDebugStringA(buf);
+        }
+    }
+
+    // Consider textures "loaded" if at least the 4 colour maps are present
+    texturesLoaded = (texSRVs[0] && texSRVs[1] && texSRVs[2] && texSRVs[3]);
+
+    char buf[64];
+    sprintf_s(buf, "PlanetRenderer: %d/%d textures loaded\n", loaded, (int)std::size(entries));
+    OutputDebugStringA(buf);
+
+    return texturesLoaded;
+}
+
+// ── createTextureSampler ──────────────────────────────────────────────────────
+// Creates an anisotropic (up to 16×) wrap sampler for the terrain textures.
+// Anisotropic filtering is important on terrain viewed at grazing angles.
+bool PlanetRenderer::createTextureSampler()
+{
+    D3D11_SAMPLER_DESC sd{};
+    sd.Filter         = D3D11_FILTER_ANISOTROPIC;
+    sd.AddressU       = D3D11_TEXTURE_ADDRESS_WRAP;
+    sd.AddressV       = D3D11_TEXTURE_ADDRESS_WRAP;
+    sd.AddressW       = D3D11_TEXTURE_ADDRESS_WRAP;
+    sd.MaxAnisotropy  = 16;
+    sd.ComparisonFunc = D3D11_COMPARISON_NEVER;
+    sd.MinLOD         = 0.f;
+    sd.MaxLOD         = D3D11_FLOAT32_MAX;
+    return SUCCEEDED(device->CreateSamplerState(&sd, texSampler.GetAddressOf()));
+}
+
+// ── bindTerrainTextures / unbindTerrainTextures ───────────────────────────────
+void PlanetRenderer::bindTerrainTextures()
+{
+    // Build a flat array of raw SRV pointers for a single SetShaderResources call
+    ID3D11ShaderResourceView* srvs[TEX_COUNT] = {};
+    for (int i = 0; i < TEX_COUNT; i++)
+        srvs[i] = texSRVs[i].Get();   // nullptr if not loaded (HLSL reads 0)
+
+    ctx->PSSetShaderResources(0, TEX_COUNT, srvs);
+
+    // Bind the anisotropic sampler to s0
+    ctx->PSSetSamplers(0, 1, texSampler.GetAddressOf());
+}
+
+void PlanetRenderer::unbindTerrainTextures()
+{
+    // Unbind all 16 slots so other draw passes don't accidentally read stale SRVs
+    ID3D11ShaderResourceView* nullSRVs[TEX_COUNT] = {};
+    ctx->PSSetShaderResources(0, TEX_COUNT, nullSRVs);
 }
 
 // ── compileShaders ────────────────────────────────────────────────────────────
@@ -311,7 +430,7 @@ void PlanetRenderer::uploadFrameConstants(const World& world, const Renderer& re
             fc->fowFacing[0] = facing.x;
             fc->fowFacing[1] = facing.y;
             fc->fowFacing[2] = facing.z;
-            fc->fowFacing[3] = std::cos(pc.genome.visionFOV() * 3.14159265f / 180.f * 0.5f);
+            fc->fowFacing[3] = std::cos(pc.genome.visionFOV() * PI / 180.f * 0.5f);
         } else { fc->fowData[3] = 0.f; }
     } else { fc->fowData[3] = 0.f; }
 
@@ -337,6 +456,12 @@ void PlanetRenderer::uploadPlanetConstants(float timeOfDay) {
     pc->planetParams[1] = cfg.snowLine;
     pc->planetParams[2] = 0.f;
     pc->planetParams[3] = 0.f;
+
+    // Pass triplanar scale and texture-loaded flag to the shader
+    pc->texParams[0] = triplanarScale;
+    pc->texParams[1] = texturesLoaded ? 1.f : 0.f;
+    pc->texParams[2] = 0.f;
+    pc->texParams[3] = 0.f;
 
     ctx->Unmap(cbPlanet.Get(), 0);
 
@@ -371,6 +496,9 @@ void PlanetRenderer::renderPatches() {
         ctx->RSSetState(rsSolid.Get());
     }
 
+    // Bind textures + sampler before the draw calls
+    bindTerrainTextures();
+
     std::vector<PlanetNode*> leaves;
     tree->collectLeaves(leaves);
 
@@ -381,6 +509,9 @@ void PlanetRenderer::renderPatches() {
         ctx->IASetIndexBuffer(leaf->ib, DXGI_FORMAT_R32_UINT, 0);
         ctx->DrawIndexed((UINT)leaf->idxCount, 0, 0);
     }
+
+    // Unbind textures so subsequent passes don't read stale slots
+    unbindTerrainTextures();
 }
 
 // ── renderAtmosphere ─────────────────────────────────────────────────────────
@@ -482,6 +613,27 @@ void PlanetRenderer::drawDebugUI() {
     ImGui::Checkbox("Atmosphere##planet",    &showAtmosphere);
     ImGui::Checkbox("Sun##planet",        &showSun);
 
+    ImGui::SeparatorText("Terrain Textures");
+    if (texturesLoaded) {
+        ImGui::TextColored({0.3f,1.f,0.3f,1.f}, "Textures: loaded");
+    } else {
+        ImGui::TextColored({1.f,0.6f,0.2f,1.f}, "Textures: not found (procedural fallback)");
+        ImGui::TextDisabled("Place files in Textures/ beside the EXE.");
+        ImGui::TextDisabled("E.g. Textures/Grass_1K-JPG_Color.jpg");
+    }
+
+    // Expose the triplanar scale so artists can tweak the tiling
+    ImGui::SliderFloat("Triplanar Scale##planet", &triplanarScale, 0.00001f, 0.001f, "%.6f");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Controls texture tile repeat size.\n"
+                          "Smaller = larger tiles (fewer repeats per km).\n"
+                          "Default 0.00015 gives ~1 tile per ~6.7 km.");
+
+    // Reload textures at runtime (useful for hot-reloading during development)
+    if (ImGui::Button("Reload Textures"))
+        loadTextures(L"Textures/");
+
+    ImGui::SeparatorText("LOD");
     ImGui::SliderFloat("Split Threshold##planet", &cfg.splitThreshold, 0.3f, 3.f);
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Lower = finer LOD (more nodes, higher quality).\n"

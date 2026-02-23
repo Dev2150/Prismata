@@ -14,6 +14,7 @@ set(SOURCES
     src/Core/RNG.hpp
     src/Sim/Creature.cpp
     src/UI/SimUI.cpp
+    src/UI/Notifications.cpp
     src/World/World_Species.cpp
     src/World/World_Tick.cpp
     src/World/World_IO.cpp
@@ -25,10 +26,12 @@ set(SOURCES
     src/Renderer/Renderer_Camera.cpp
     src/Renderer/Renderer_Creatures.cpp
     src/Renderer/Renderer_Frame.cpp
+    src/Renderer/Renderer_planets.cpp
     src/Renderer/Renderer_Init.cpp
     src/Renderer/Renderer_Overlays.cpp
     src/Renderer/Planet/PlanetQuadTree.cpp
     src/Renderer/Planet/PlanetRenderer.cpp
+    src/Renderer/Planet/PlanetTextureLoader.hpp
 
     # ImGui – place the imgui/ folder at the project root
     imgui/imgui.cpp
@@ -43,8 +46,6 @@ set(SOURCES
     implot/implot.cpp
     implot/implot_items.cpp
     implot/implot_demo.cpp
-        src/Renderer/Renderer_planets.cpp
-        src/UI/Notifications.cpp
 )
 
 add_executable(KyberPlanet WIN32 ${SOURCES})

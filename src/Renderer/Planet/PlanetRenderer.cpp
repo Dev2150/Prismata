@@ -92,7 +92,15 @@ bool PlanetRenderer::compileShaders() {
         {"POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
     };
     device->CreateInputLayout(sunLD, 1, svs->GetBufferPointer(), svs->GetBufferSize(), sunLayout.GetAddressOf());
+    
+    // ── Star shader ───────────────────────────────────────────────────────────
+    auto stvs = compileShader(STAR_HLSL, "StarVS", "vs_5_0");
+    auto stps = compileShader(STAR_HLSL, "StarPS", "ps_5_0");
+    if (!stvs || !stps) return false;
+    device->CreateVertexShader(stvs->GetBufferPointer(), stvs->GetBufferSize(), nullptr, starVS.GetAddressOf());
+    device->CreatePixelShader (stps->GetBufferPointer(), stps->GetBufferSize(), nullptr, starPS.GetAddressOf());
 
+        
     return true;
 }
 
@@ -428,6 +436,31 @@ void PlanetRenderer::renderSun() {
     ctx->RSSetState(rsSolid.Get());
 }
 
+// ── renderStars ───────────────────────────────────────────────────────────────
+void PlanetRenderer::renderStars() {
+    if (wireframe) return;
+
+    ctx->RSSetState(rsSolidNoCull.Get());
+    ctx->OMSetDepthStencilState(dssNoWrite.Get(), 0); // depth test, no write
+    float bf[4] = {};
+    ctx->OMSetBlendState(bsAdditive.Get(), bf, 0xFFFFFFFF); // additive blend
+
+    ctx->IASetInputLayout(layout.Get()); // reuse planet layout (pos is first)
+    ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    ctx->VSSetShader(starVS.Get(), nullptr, 0);
+    ctx->PSSetShader(starPS.Get(), nullptr, 0);
+
+    UINT stride = sizeof(float) * 3, offset = 0;
+    ctx->IASetVertexBuffers(0, 1, atmoVB.GetAddressOf(), &stride, &offset);
+    ctx->IASetIndexBuffer(atmoIB.Get(), DXGI_FORMAT_R32_UINT, 0);
+    ctx->DrawIndexed((UINT)atmoIdxCount, 0, 0);
+
+    // Restore states
+    ctx->OMSetBlendState(bsOpaque.Get(), bf, 0xFFFFFFFF);
+    ctx->OMSetDepthStencilState(dssDepth.Get(), 0);
+    ctx->RSSetState(rsSolid.Get());
+}
+
 // ── render ────────────────────────────────────────────────────────────────────
 void PlanetRenderer::render(const World& world, const Renderer& rend, float aspect) {
     uploadFrameConstants(world, rend, aspect);
@@ -436,6 +469,7 @@ void PlanetRenderer::render(const World& world, const Renderer& rend, float aspe
     renderPatches();       // opaque terrain
     renderAtmosphere(rend.camera); // transparent atmosphere shell
     renderSun();           // additive sun disc (always last so glow is on top)
+    renderStars();         // stars in the background
 }
 
 // ── drawDebugUI ───────────────────────────────────────────────────────────────

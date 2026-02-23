@@ -27,6 +27,10 @@ struct PlanetRenderer {
     ComPtr<ID3D11InputLayout> sunLayout;
     ComPtr<ID3D11Buffer> sunQuadVB; // 4 corners of a unit quad
 
+    // Star shaders
+    ComPtr<ID3D11VertexShader> starVS;
+    ComPtr<ID3D11PixelShader> starPS;
+
     // Constant buffers
     ComPtr<ID3D11Buffer> cbFrame; // shared layout with world renderer
     ComPtr<ID3D11Buffer> cbPlanet; // planet-specific per-draw data
@@ -110,6 +114,7 @@ private:
     void renderPatches();
     void renderAtmosphere(const Camera& cam);
     void renderSun();
+    void renderStars();
 
 };
 

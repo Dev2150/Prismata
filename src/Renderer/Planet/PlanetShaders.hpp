@@ -306,3 +306,57 @@ float4 SunPS(SVOut v) : SV_TARGET {
     return float4(col, alpha);
 }
 )HLSL";
+
+// ── STAR_HLSL ─────────────────────────────────────────────────────────────────
+// Procedural twinkling starfield. Reuses the atmosphere sphere mesh but pushes
+// it to the far clip plane.
+static const char* STAR_HLSL = R"HLSL(
+cbuffer FrameConstants : register(b0) {
+    float4x4 viewProj;
+    float4   camPos;
+    float4   lightDir;
+    float4   fowData;
+    float4   fowFacing;
+    float4   sunColor;
+    float4   ambientColor;
+    float4   planetCenter;
+};
+
+struct VIn { float3 pos : POSITION; };
+struct VOut {
+    float4 sv  : SV_POSITION;
+    float3 dir : TEXCOORD0;
+};
+
+VOut StarVS(VIn v) {
+    VOut o;
+    // Center the sphere on the camera
+    float3 wpos = camPos.xyz + normalize(v.pos) * 1000.0f; 
+    o.sv = mul(float4(wpos, 1.0f), viewProj);
+    o.sv.z = o.sv.w * 0.9999f; // push to far plane
+    o.dir = normalize(v.pos);
+    return o;
+}
+
+float hash(float3 p) {
+    p = frac(p * float3(0.1031, 0.1030, 0.0973));
+    p += dot(p, p.yxz + 33.33);
+    return frac((p.x + p.y) * p.z);
+}
+
+float4 StarPS(VOut v) : SV_TARGET {
+    float3 dir = normalize(v.dir);
+    float h = hash(dir * 800.0);
+    float star = smoothstep(0.99, 1.0, h);
+    
+    float time = ambientColor.w * 5.0;
+    float twinkle = sin(time + hash(dir * 100.0) * 6.28) * 0.5 + 0.5;
+    star *= 0.2 + 0.8 * twinkle;
+    
+    float elev = -cos(sunColor.w * 6.2831853);
+    float nightFactor = smoothstep(0.1, -0.1, elev); // 1 at night, 0 during day
+    float3 tint = lerp(float3(0.8, 0.9, 1.0), float3(1.0, 0.9, 0.8), hash(dir * 200.0));
+    
+    return float4(star * tint * nightFactor, star * nightFactor);
+}
+)HLSL";

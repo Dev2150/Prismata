@@ -55,9 +55,66 @@ struct SimUI {
     // Window dimensions passed in from main.cpp each frame
     int  windowW = 1280, windowH = 800;
 
-    // ── Performance metrics (set by App.cpp each frame) ───────────────────────
-    float displayFPS = 0.f;   // frames per second (rendering)
-    float displayUPS = 0.f;   // simulation updates per second
+    struct PerformanceTracker {
+        static constexpr int RING = 300;  // ~5 seconds at 60fps
+
+        float fpsSamples[RING] = {};      // each entry = instantaneous FPS for that frame
+        float upsSamples[RING] = {};
+        int   head = 0;
+        int   count = 0;
+
+        // Rolling window accumulators (for 0.5s average display)
+        int   fpsFrameCount = 0;
+        float fpsAccum      = 0.f;
+        int   upsTickCount  = 0;
+        float upsAccum      = 0.f;
+
+        float displayFPS    = 0.f;
+        float displayUPS    = 0.f;
+        float onePctLowFPS  = 0.f;
+        float onePctLowUPS  = 0.f;
+
+        void pushFPS(float instantFPS) {
+            fpsSamples[head % RING] = instantFPS;
+            // UPS slot filled separately; mark as invalid until set
+        }
+        void pushUPS(float instantUPS) {
+            upsSamples[head % RING] = instantUPS;
+            head = (head + 1) % RING;
+            count = std::min(count + 1, RING);
+        }
+
+        // Compute the Nth percentile from an array copy (partial sort)
+        static float percentile(float* arr, int n, float pct) {
+            if (n <= 0) return 0.f;
+            // Copy to temp buffer and partial sort
+            static float tmp[RING];
+            for (int i = 0; i < n; i++) tmp[i] = arr[i];
+            int k = std::max(0, (int)(pct * n / 100.f));
+            std::nth_element(tmp, tmp + k, tmp + n);
+            return tmp[k];
+        }
+
+        void compute1PctLows() {
+            if (count == 0) return;
+            // 1% lows = bottom 1st percentile = lowest ~1% of frame rates
+            // Collect the valid window
+            int n = count;
+            float fBuf[RING], uBuf[RING];
+            for (int i = 0; i < n; i++) {
+                fBuf[i] = fpsSamples[i];
+                uBuf[i] = upsSamples[i];
+            }
+            onePctLowFPS = percentile(fBuf, n, 1.f);
+            onePctLowUPS = percentile(uBuf, n, 1.f);
+        }
+    } perf;
+
+    float displayFPS = 0.f;   // kept for SimUI internal use, mirrors perf.displayFPS
+    float displayUPS = 0.f;
+
+    float onePctLowFPS = 0.f;   // 1% low FPS (worst 1% of recent frames)
+    float onePctLowUPS = 0.f;   // 1% low UPS
 
     // ── Notifications ─────────────────────────────────────────────────────────
     // Newest first; the draw function renders them top-to-bottom in this order.

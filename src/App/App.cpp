@@ -192,18 +192,50 @@ int RunApplication()
         auto now = Clock::now();
         float dt = std::chrono::duration<float>(now - lastTime).count();
         lastTime = now;
-        dt = std::min(dt, 0.05f);
+        float raw_dt = dt;                 // true frame time, uncapped
+        dt = std::min(dt, 0.05f);         // capped for simulation stability
 
-        // ── FPS counter ─────────────────────────────────────────────────────
+        // ── FPS / UPS counters with 1% low tracking ─────────────────────────────
+        // Ring buffer stores instantaneous frame rates for 1% low calculation.
+        // Uses raw_dt (uncapped) so genuine stutter frames are captured.
+        static constexpr int PERF_RING = 120;          // 60 would be at 60fps 1 second
+        static float s_fpsBuf[PERF_RING] = {};
+        static float s_upsBuf[PERF_RING] = {};
+        static int   s_perfHead  = 0;
+        static int   s_perfCount = 0;
+
         {
             static int   fpsFrameCount = 0;
             static float fpsAccum      = 0.f;
+
+            // Instantaneous FPS from raw (uncapped) frame time
+            float instFPS = (raw_dt > 1e-6f) ? (1.f / raw_dt) : 9999.f;
+            s_fpsBuf[s_perfHead] = instFPS;
+            // Note: perfHead is advanced in the UPS block below so both buffers stay in sync
+
             fpsFrameCount++;
-            fpsAccum += dt;
+            fpsAccum += raw_dt;
             if (fpsAccum >= 0.5f) {
                 g_ui.displayFPS = (float)fpsFrameCount / fpsAccum;
                 fpsFrameCount   = 0;
                 fpsAccum        = 0.f;
+
+                // Recompute 1% lows every 0.5s (cheap: only when display updates)
+                if (s_perfCount > 0) {
+                    // Copy valid portion and partial-sort for 1st percentile
+                    static float tmpF[PERF_RING], tmpU[PERF_RING];
+                    int n = s_perfCount;
+                    for (int i = 0; i < n; i++) {
+                        tmpF[i] = s_fpsBuf[i];
+                        tmpU[i] = s_upsBuf[i];
+                    }
+                    int kf = std::max(0, (int)(0.01f * n));
+                    int ku = std::max(0, (int)(0.01f * n));
+                    std::nth_element(tmpF, tmpF + kf, tmpF + n);
+                    std::nth_element(tmpU, tmpU + ku, tmpU + n);
+                    g_ui.onePctLowFPS = tmpF[kf];
+                    g_ui.onePctLowUPS = tmpU[ku];
+                }
             }
         }
 
@@ -214,16 +246,24 @@ int RunApplication()
         g_world.tick(dt);
         g_recorder.tick(dt, g_world);
 
-        // ── UPS counter ─────────────────────────────────────────────────────
-        // Measures real world.tick() calls per wall-clock second.
-        // The simulation is called once per rendered frame, so UPS = FPS when
-        // not paused. Showing both lets you see if rendering is the bottleneck.
+        // ── UPS counter ─────────────────────────────────────────────────────────
         {
             static int   upsTickCount = 0;
             static float upsAccum     = 0.f;
+
+            // Store instantaneous UPS in ring buffer (same slot as FPS this frame).
+            // UPS ≈ FPS when not paused; 0 when paused.
+            float instUPS = (!g_world.cfg.paused && raw_dt > 1e-6f)
+                          ? (1.f / raw_dt) : 0.f;
+            s_upsBuf[s_perfHead] = instUPS;
+
+            // Advance the ring buffer head now that both FPS and UPS are written
+            s_perfHead = (s_perfHead + 1) % PERF_RING;
+            s_perfCount = std::min(s_perfCount + 1, PERF_RING);
+
             if (!g_world.cfg.paused) {
                 upsTickCount++;
-                upsAccum += dt;
+                upsAccum += raw_dt;
             }
             if (upsAccum >= 0.5f) {
                 g_ui.displayUPS = (float)upsTickCount / upsAccum;

@@ -277,12 +277,19 @@ void SimUI::drawMainMenuBar(World& world, DataRecorder& rec, Renderer& rend) {
         else if (displayFPS >= 30.f) fpsCol = {1.0f, 0.9f, 0.2f, 1.f};
         else                         fpsCol = {1.0f, 0.3f, 0.2f, 1.f};
 
+        // FPS with 1% low in parentheses
         ImGui::TextColored(fpsCol, "  |  FPS: %4.0f", displayFPS);
         ImGui::SameLine(0.f, 0.f);
+        ImGui::TextColored(ImVec4(fpsCol.x * 0.7f, fpsCol.y * 0.7f, fpsCol.z * 0.7f, 1.f),
+            " (%3.0f)", onePctLowFPS);
+        ImGui::SameLine(0.f, 0.f);
 
-        // UPS: simulation ticks per second (real clock, not sim time)
-        ImVec4 upsCol = {0.6f, 0.85f, 1.0f, 1.f};  // always light blue
+        // UPS with 1% low
+        ImVec4 upsCol    = {0.6f, 0.85f, 1.0f, 1.f};
+        ImVec4 upsDimCol = {0.42f, 0.60f, 0.70f, 1.f};
         ImGui::TextColored(upsCol, "  UPS: %4.0f", displayUPS);
+        ImGui::SameLine(0.f, 0.f);
+        ImGui::TextColored(upsDimCol, " (%3.0f)", onePctLowUPS);
     }
 
     // ── Controls hint (right-aligned) ─────────────────────────────────────────
@@ -822,4 +829,3 @@ void SimUI::loadSettingsFromFile(const char* path, World& world, Renderer& rend)
         } catch (...) { /* skip malformed lines */ }
     }
 }
-

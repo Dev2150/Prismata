@@ -34,15 +34,15 @@ struct PlanetConfig {
     float    radius          = PLANET_RADIUS;   // sphere radius (world units)
     Vec3     center          = {0.f, PLANET_CENTER_Y, 0.f};       // world-space centre of the planet
 
-    // LOD parameters
-    int      maxDepth        = 18;       // deepest allowed subdivision level
-    float    splitThreshold  = 1.2f;    // split when (edgeLen / camDist) > this
+    // Level of Detail (LOD) parameters
+    int      maxDepth;       // deepest allowed subdivision level
+    float    splitThreshold;    // split when (edgeLen / camDist) > this
                                          // lower = more aggressive LOD
 
     // Mesh resolution: each leaf patch is patchRes×patchRes vertices.
     // Must satisfy (patchRes - 1) = power of 2 for stitching.
     // 17 → 16×16 quads = 512 triangles per leaf.
-    int      patchRes        = 17;
+    int      patchRes;
 
     // Terrain noise
     float    heightScale     = PLANET_HEIGHT_SCALE;   // max displacement from sphere surface

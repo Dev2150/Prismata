@@ -121,7 +121,7 @@ int RunApplication()
     PlanetConfig pcfg;
     pcfg.maxDepth        = 16;        // deepest LOD level (~1.5m patches at max)
     pcfg.patchRes        = 17;        // 17×17 vertices per patch (16×16 quads)
-    pcfg.splitThreshold  = 1.2f;      // tune for quality vs performance
+    pcfg.splitThreshold  = 0.3f;      // tune for quality vs performance
 
     if (!g_planet.init(g_pd3dDevice, g_pd3dDeviceContext, pcfg)) {
         OutputDebugStringA("FATAL: Planet init failed!\n");

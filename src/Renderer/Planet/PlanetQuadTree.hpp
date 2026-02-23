@@ -128,15 +128,17 @@ struct PlanetNode {
     // ── Constructor ──────────────────────────────────────────────────────────
     PlanetNode(int face, int depth, float u0, float v0, float u1, float v1,
                const PlanetConfig& cfg)
-        : face(face), depth(depth), u0(u0), v0(v0), u1(u1), v1(v1)
-    {
+        : face(face), depth(depth), u0(u0), v0(v0), u1(u1), v1(v1) {
         float umid = (u0 + u1) * 0.5f;
         float vmid = (v0 + v1) * 0.5f;
         centerDir   = faceUVtoDir(face, umid, vmid);
+        float h = PlanetNoise::sampleHeight(centerDir.x, centerDir.y, centerDir.z, cfg.heightScale);
+        h = std::max(h, 0.0f);
+        float r = cfg.radius + h;
         centerWorld = {
-            cfg.center.x + centerDir.x * cfg.radius,
-            cfg.center.y + centerDir.y * cfg.radius,
-            cfg.center.z + centerDir.z * cfg.radius,
+            cfg.center.x + centerDir.x * r,
+            cfg.center.y + centerDir.y * r,
+            cfg.center.z + centerDir.z * r,
         };
         // Edge length ≈ arc length covered by this node on the sphere surface.
         // At depth 0, a face spans 90° → arc = π/2 × radius.

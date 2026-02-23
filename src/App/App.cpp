@@ -46,7 +46,7 @@ int RunApplication()
     // Scale the logical 1600×900 design size by the DPI factor
     int winW = (int)(1600 * dpi), winH = (int)(900 * dpi);
     HWND hwnd = ::CreateWindowW(
-        wc.lpszClassName, L"KyberPlanet – Evolution Simulation",
+        wc.lpszClassName, L"KyberPlanet - Evolution simulation",
         WS_OVERLAPPEDWINDOW,   // standard resizable/minimisable/maximisable window
         100, 100, winW, winH,  // initial position and size
         nullptr, nullptr, wc.hInstance, nullptr);

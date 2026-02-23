@@ -201,7 +201,9 @@ void PlanetFaceTree::updateRec(PlanetNode* node, const Vec3& camPos,
     float dy = camPos.y - node->centerWorld.y;
     float dz = camPos.z - node->centerWorld.z;
     float dist = std::sqrt(dx*dx + dy*dy + dz*dz);
-    dist = std::max(dist, 1.f);  // guard against camera inside the node
+
+    // Subtract bounding radius to get distance to the closest edge of the node
+    dist = std::max(1.f, dist - node->edgeLen * 0.75f);
 
     // LOD metric: ratio of node's edge length to camera distance
     float metric = node->edgeLen / dist;

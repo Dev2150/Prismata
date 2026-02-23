@@ -12,6 +12,7 @@ struct Camera {
     Float3 up     = {0.f, 1.f, 0.f};
     float  fovY   = 60.f;   // degrees
     float  translation_speed = 200.f;
+    float  effective_speed;
     float  zoom_speed_coefficient = 0.1f;
     float  follow_dist    = 8000.f;   // How far behind the creature
     float  follow_height  = 500.f;   // How high above the creature

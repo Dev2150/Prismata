@@ -250,6 +250,32 @@ void Renderer::tickCamera(float dt, const World& world) {
             }
             camera.up = {camNormalAfter.x, camNormalAfter.y, camNormalAfter.z};
         }
+
+        // ── Terrain collision: prevent camera clipping through the surface ────
+        // After all movement (including radial/scroll), compute the terrain surface
+        // point directly below the camera and enforce a minimum clearance.
+        // We do this every frame (not just when moving) because scroll can also
+        // push the camera underground.
+        {
+            static constexpr float MIN_CLEARANCE = 200.f;  // metres above terrain
+
+            Vec3 finalCamPos = { camera.pos.x, camera.pos.y, camera.pos.z };
+            Vec3 outwardDir  = g_planet_surface.normalAt(finalCamPos);
+            Vec3 surfPt      = g_planet_surface.surfacePos(outwardDir);
+
+            // Distance along the outward normal from terrain to camera
+            float camR    = (finalCamPos - g_planet_surface.center).len();
+            float surfR   = (surfPt      - g_planet_surface.center).len();
+            float clearance = camR - surfR;
+
+            if (clearance < MIN_CLEARANCE) {
+                // Push camera outward to maintain minimum clearance
+                float push = MIN_CLEARANCE - clearance;
+                camera.pos.x += outwardDir.x * push;
+                camera.pos.y += outwardDir.y * push;
+                camera.pos.z += outwardDir.z * push;
+            }
+        }
     }
 }
 

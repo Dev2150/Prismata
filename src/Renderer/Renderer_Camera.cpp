@@ -149,7 +149,7 @@ void Renderer::tickCamera(float dt, const World& world) {
         // ── Mouse wheel zoom (radial movement) ───────────────────────────────
         if (std::abs(scrollDelta) > 1e-4f) {
             Vec3 radialDir = camNormal;  // outward from planet centre
-            float zoomSpd  = camera.translation_speed * camera.zoom_speed_coefficient;
+            float zoomSpd  = camera.effective_speed * camera.zoom_speed_coefficient;
             camera.pos.x  += radialDir.x * scrollDelta * zoomSpd;
             camera.pos.y  += radialDir.y * scrollDelta * zoomSpd;
             camera.pos.z  += radialDir.z * scrollDelta * zoomSpd;
@@ -170,7 +170,25 @@ void Renderer::tickCamera(float dt, const World& world) {
             tangFwd.x * camNormal.y - tangFwd.y * camNormal.x
         }.normalised();
 
-        float spd = camera.translation_speed * dt;
+        // ── Altitude-dependent speed ──────────────────────────────────────────
+        // Find the terrain surface directly below the camera (along the planet
+        // outward normal) and compute altitude above it.
+        // Speed scales with altitude so the camera is slow near the surface
+        // (precise navigation) and fast when high up (covering large distances).
+        //   ~500 m above terrain  →  ~2.5% of translation_speed
+        //   ~10 000 m             →  ~50%
+        //   ~20 000 m             →  100%  (reference altitude)
+        //   >20 000 m             →  capped at 5× translation_speed
+        float altitudeAboveTerrain;
+        {
+            Vec3 surfacePoint = g_planet_surface.surfacePos(camNormal);
+            altitudeAboveTerrain = (camPos3 - surfacePoint).len();
+        }
+        const float REF_ALT  = 20000.f;
+        float speedScale     = std::max(0.025f, std::min(5.0f, altitudeAboveTerrain / REF_ALT));
+        camera.effective_speed = camera.translation_speed * speedScale;
+        float spd            = camera.effective_speed * dt;
+
         Float3 f  = camera.forward();
         // Right vector: perpendicular to forward in the XZ plane (no vertical component)
         Float3 r  = { f.z, 0.f, -f.x };

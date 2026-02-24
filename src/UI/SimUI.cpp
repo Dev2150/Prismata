@@ -733,32 +733,55 @@ void SimUI::drawSettingsWindow(World& world, Renderer& rend) {
         return;
     }
 
+    bool changed = false;   // set to true by any widget that was edited this frame
+
+    // Convenience macros so every slider only needs one extra line.
+    // IsItemDeactivatedAfterEdit() fires once when the user releases the slider,
+    // not every frame while dragging — avoids hammering the filesystem.
+#define SLIDER_F(label, var, lo, hi) \
+    ImGui::SliderFloat(label, &(var), lo, hi); \
+    changed |= ImGui::IsItemDeactivatedAfterEdit();
+
+#define SLIDER_I(label, var, lo, hi) \
+    ImGui::SliderInt(label, &(var), lo, hi); \
+    changed |= ImGui::IsItemDeactivatedAfterEdit();
+
+#define CHECK(label, var) \
+    changed |= ImGui::Checkbox(label, &(var));
+
+    // ── Simulation ────────────────────────────────────────────────────────────
     ImGui::SeparatorText("Simulation");
-    ImGui::SliderFloat("Sim Speed##s",          &world.cfg.simSpeed,           0.1f, 20.f);
+    SLIDER_F("Sim Speed##s",           world.cfg.simSpeed,           0.1f, 20.f)
     ImGui::TextDisabled("(- / + keys also adjust speed)");
-    ImGui::SliderFloat("Mutation Rate Scale##s",&world.cfg.mutationRateScale,  0.1f,  5.f);
-    ImGui::SliderFloat("Species Epsilon##s",    &world.cfg.speciesEpsilon,     0.05f, 0.5f);
+    SLIDER_F("Mutation Rate Scale##s", world.cfg.mutationRateScale,  0.1f,  5.f)
+    SLIDER_F("Species Epsilon##s",     world.cfg.speciesEpsilon,     0.05f, 0.5f)
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Genetic distance threshold for new species.\n"
                           "A newborn whose genome differs by more\n"
                           "than this from all species centroids\n"
                           "will trigger a speciation event (100%%).");
-    ImGui::SliderFloat("Plant Grow Rate##s",    &world.cfg.plantGrowRate,      0.f,   5.f);
-    ImGui::SliderInt  ("Max Population##s",     &world.cfg.maxPopulation,      100, Renderer::MAX_CREATURES);
+    SLIDER_F("Plant Grow Rate##s",     world.cfg.plantGrowRate,      0.f,   5.f)
+    SLIDER_I("Max Population##s",      world.cfg.maxPopulation,      100, Renderer::MAX_CREATURES)
 
+    // ── Camera ────────────────────────────────────────────────────────────────
     ImGui::SeparatorText("Camera");
-    ImGui::SliderFloat("FOV##s",             &rend.camera.fovY,                30.f, 120.f);
-    ImGui::SliderFloat("Move Speed##s",      &rend.camera.translation_speed,   1000.f, 40000.f);
-    ImGui::SliderFloat("Follow Distance##s", &rend.camera.follow_dist,          200.f,  4000.f);
-    ImGui::SliderFloat("Follow Speed##s",    &rend.camera.follow_speed,         1.f,  20.f);
-    ImGui::Checkbox("Lock Yaw When Following##s", &rend.lockYawFollow);
+    SLIDER_F("FOV##s",              rend.camera.fovY,               30.f,   120.f)
+    SLIDER_F("Move Speed##s",       rend.camera.translation_speed,  1000.f, 40000.f)
+    SLIDER_F("Follow Distance##s",  rend.camera.follow_dist,        200.f,  4000.f)
+    SLIDER_F("Follow Speed##s",     rend.camera.follow_speed,       1.f,    20.f)
+    CHECK("Lock Yaw When Following##s", rend.lockYawFollow)
 
     ImGui::SeparatorText("Rendering");
-    ImGui::Checkbox("Show FOV Cone##s",&rend.showFOVCone);
-    ImGui::Checkbox("Wireframe##s",    &rend.wireframe);
-    ImGui::Checkbox("Fog of War##s",   &rend.showFogOfWar);
-    ImGui::SliderFloat("Fog Radius##s",&rend.fogRadius, 500.f, 8000.f);
+    CHECK("Show FOV Cone##s", rend.showFOVCone)
+    CHECK("Wireframe##s",     rend.wireframe)
+    CHECK("Fog of War##s",    rend.showFogOfWar)
+    SLIDER_F("Fog Radius##s", rend.fogRadius, 500.f, 8000.f)
 
+#undef SLIDER_F
+#undef SLIDER_I
+#undef CHECK
+
+    // ── Hotkeys (read-only) ───────────────────────────────────────────────────
     ImGui::SeparatorText("Hotkeys");
     ImGui::TextDisabled("Space    – Pause / Resume");
     ImGui::TextDisabled("- / +    – Decrease / Increase sim speed (1.25×)");
@@ -769,11 +792,26 @@ void SimUI::drawSettingsWindow(World& world, Renderer& rend) {
     ImGui::TextDisabled("W/S/A/D  – Move camera (fwd/back/left/right)");
     ImGui::TextDisabled("F/Q      – Move camera up/down");
 
+    // ── Save / Load ───────────────────────────────────────────────────────────
     ImGui::SeparatorText("Save / Load");
+
     ImGui::InputText("Path##sjson", settingsPathBuf, sizeof(settingsPathBuf));
-    if (ImGui::Button("Save Settings")) saveSettingsToFile(settingsPathBuf, world, rend);
     ImGui::SameLine();
-    if (ImGui::Button("Load Settings")) loadSettingsFromFile(settingsPathBuf, world, rend);
+    if (ImGui::Button("Load"))      loadSettingsFromFile(settingsPathBuf, world, rend);
+
+    // Show a brief "Saved!" confirmation for 2 seconds after any auto-save
+    static float savedMsgTimer = 0.f;
+    savedMsgTimer -= ImGui::GetIO().DeltaTime;
+    if (savedMsgTimer > 0.f)
+        ImGui::TextColored({0.3f, 1.f, 0.4f, 1.f}, "Auto-saved to %s", settingsPathBuf);
+    else
+        ImGui::TextColored({0.3f, 1.f, 0.4f, 1.f}, "", settingsPathBuf);
+
+    // ── Auto-save ─────────────────────────────────────────────────────────────
+    if (changed) {
+        saveSettingsToFile(settingsPathBuf, world, rend);
+        savedMsgTimer = 2.f;
+    }
 
     ImGui::End();
 }
@@ -784,6 +822,16 @@ void SimUI::saveSettingsToFile(const char* path, const World& world, const Rende
     std::ofstream f(path);
     if (!f) return;
     f << "{\n";
+    // UI Panels
+    f << "  \"showPanels\": "       << (showPanels ? "true" : "false") << ",\n";
+    f << "  \"showSimControls\": "  << (showSimControls ? "true" : "false") << ",\n";
+    f << "  \"showPopStats\": "     << (showPopStats ? "true" : "false") << ",\n";
+    f << "  \"showInspector\": "    << (showInspector ? "true" : "false") << ",\n";
+    f << "  \"showSpecies\": "      << (showSpecies ? "true" : "false") << ",\n";
+    f << "  \"showGeneCharts\": "   << (showGeneCharts ? "true" : "false") << ",\n";
+    f << "  \"showPlayerPanel\": "  << (showPlayerPanel ? "true" : "false") << ",\n";
+    f << "  \"showPlanetDebug\": "  << (showPlanetDebug ? "true" : "false") << ",\n";
+    f << "  \"showSettings\": "     << (showSettings ? "true" : "false") << ",\n";
     // Simulation
     f << "  \"simSpeed\": "             << world.cfg.simSpeed             << ",\n";
     f << "  \"mutationRateScale\": "    << world.cfg.mutationRateScale    << ",\n";
@@ -829,7 +877,16 @@ void SimUI::loadSettingsFromFile(const char* path, World& world, Renderer& rend)
         bool bval = (val == "true");
 
         try {
-            if      (has("\"simSpeed\""))          world.cfg.simSpeed            = std::stof(val);
+            if      (has("\"showPanels\""))         showPanels                    = bval;
+            else if (has("\"showSimControls\""))    showSimControls               = bval;
+            else if (has("\"showPopStats\""))       showPopStats                  = bval;
+            else if (has("\"showInspector\""))      showInspector                 = bval;
+            else if (has("\"showSpecies\""))        showSpecies                   = bval;
+            else if (has("\"showGeneCharts\""))     showGeneCharts                = bval;
+            else if (has("\"showPlayerPanel\""))    showPlayerPanel               = bval;
+            else if (has("\"showPlanetDebug\""))    showPlanetDebug               = bval;
+            else if (has("\"showSettings\""))       showSettings                  = bval;
+            else if (has("\"simSpeed\""))           world.cfg.simSpeed            = std::stof(val);
             else if (has("\"mutationRateScale\""))  world.cfg.mutationRateScale   = std::stof(val);
             else if (has("\"speciesEpsilon\""))     world.cfg.speciesEpsilon      = std::stof(val);
             else if (has("\"plantGrowRate\""))      world.cfg.plantGrowRate       = std::stof(val);

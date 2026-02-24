@@ -34,9 +34,9 @@ struct SimUI {
     bool       showDemoWindow  = false;
 
     // ── File path buffers ──────────────────────────────────────────────────────
-    char       savePathBuf[256]= "world.evosave";
+    char       savePathBuf[256]= "world.kybrp";
     char       csvPathBuf[256] = "export.csv";
-    char       settingsPathBuf[256] = "settings.json";
+    char       settingsPathBuf[256] = "default.json";
 
     // ── Settings window ───────────────────────────────────────────────────────
     bool       showSettings    = false;
@@ -48,7 +48,6 @@ struct SimUI {
     bool       showGeneCharts  = true;
     bool       showPlayerPanel = true;
     bool       showPlanetDebug = true;
-
 
     // ── Histogram buffers ─────────────────────────────────────────────────────
     std::vector<float> histX, histY;

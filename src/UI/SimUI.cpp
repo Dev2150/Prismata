@@ -47,6 +47,28 @@ void SimUI::draw(World& world, DataRecorder& rec, Renderer& rend) {
     float realDt = ImGui::GetIO().DeltaTime;
     tickNotifications(realDt, world);
 
+    // ── Snapshot window-open state BEFORE drawing ─────────────────────────
+    // Any change (menu-bar checkbox OR the × close button) will be caught
+    // by the comparison below and trigger an immediate auto-save.
+    struct WinFlags {
+        bool panels, simControls, popStats, inspector, species,
+             geneCharts, playerPanel, planetDebug, settings;
+        bool operator==(const WinFlags& o) const {
+            return panels==o.panels && simControls==o.simControls &&
+                   popStats==o.popStats && inspector==o.inspector &&
+                   species==o.species && geneCharts==o.geneCharts &&
+                   playerPanel==o.playerPanel && planetDebug==o.planetDebug &&
+                   settings==o.settings;
+        }
+    };
+    auto captureFlags = [&]() -> WinFlags {
+        return { showPanels, showSimControls, showPopStats, showInspector,
+                 showSpecies, showGeneCharts, showPlayerPanel,
+                 showPlanetDebug, showSettings };
+    };
+    WinFlags before = captureFlags();
+
+    // ── Normal draw ───────────────────────────────────────────────────────
     drawMainMenuBar(world, rec, rend);
     
     if (showPanels) {
@@ -58,9 +80,8 @@ void SimUI::draw(World& world, DataRecorder& rec, Renderer& rend) {
         if (showPlayerPanel) drawPlayerPanel(world, rend);
 
         if (showPlanetDebug) {
-            if (ImGui::Begin("Planet Debug", &showPlanetDebug)) {
+            if (ImGui::Begin("Planet Debug", &showPlanetDebug))
                 g_planet.drawDebugUI();
-            }
             ImGui::End();
         }
 
@@ -76,6 +97,10 @@ void SimUI::draw(World& world, DataRecorder& rec, Renderer& rend) {
         ImGui::ShowDemoWindow(&showDemoWindow);
         ImPlot::ShowDemoWindow();
     }
+
+    // ── Auto-save if any window was opened or closed this frame ──────────
+    if (!(captureFlags() == before))
+        saveSettingsToFile(settingsPathBuf, world, rend);
 }
 
 // ── Terrain hover ─────────────────────────────────────────────────────────────
@@ -796,8 +821,8 @@ void SimUI::drawSettingsWindow(World& world, Renderer& rend) {
     ImGui::SeparatorText("Save / Load");
 
     ImGui::InputText("Path##sjson", settingsPathBuf, sizeof(settingsPathBuf));
-    ImGui::SameLine();
-    if (ImGui::Button("Load"))      loadSettingsFromFile(settingsPathBuf, world, rend);
+    ImGui::SameLine(); if (ImGui::Button("Load"))      loadSettingsFromFile(settingsPathBuf, world, rend);
+    ImGui::SameLine(); if (ImGui::Button("Save"))      saveSettingsToFile(settingsPathBuf, world, rend);
 
     // Show a brief "Saved!" confirmation for 2 seconds after any auto-save
     static float savedMsgTimer = 0.f;

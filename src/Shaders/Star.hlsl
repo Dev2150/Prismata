@@ -105,9 +105,9 @@ float4 StarPS(VOut v) : SV_TARGET {
     float3 camNormal = normalize(camPos.xyz - planetCenter.xyz);
     float sunElev = dot(camNormal, L);
 
-    // Fully visible when sunElev < -0.1 (sun below local horizon)
-    // Invisible when sunElev > 0.1 (sun above local horizon)
-    float nightFactor = smoothstep(0.1f, -0.1f, sunElev);
+    // <0 = sun below local horizon
+    // Transitions from visible to invisible
+    float nightFactor = smoothstep(1.f, -1.0f, sunElev);
 
     // Star tint (blue-white to yellow-white)
     float3 tint = lerp(float3(0.7f, 0.85f, 1.0f), float3(1.0f, 0.9f, 0.7f), h.y);

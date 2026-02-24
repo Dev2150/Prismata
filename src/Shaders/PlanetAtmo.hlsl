@@ -88,7 +88,7 @@ float4 PSAtmo(VOut v) : SV_TARGET {
 
     skyCol = lerp(skyCol, sunsetCol, sunsetBlend * sunDirBlend * horizonBlend);
 
-    float dayBrightness = smoothstep(-0.1f, 0.2f, sunElev);
+    float dayBrightness = smoothstep(-0.35f, 0.05f, sunElev);
     float3 groundCol = skyCol * dayBrightness;
     float groundAlpha = lerp(0.6f, 0.98f, horizonBlend) * dayBrightness;
 

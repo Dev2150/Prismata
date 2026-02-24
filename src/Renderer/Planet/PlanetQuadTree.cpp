@@ -23,28 +23,12 @@
 #include <algorithm>
 #include <vector>
 
-// ── Mesh build helper ─────────────────────────────────────────────────────────
-// Samples height at a UV position on a given face (no GPU, CPU-only).
-static float sampleH(int face, float u, float v, const PlanetConfig& cfg) {
-    Vec3 dir = faceUVtoDir(face, u, v);
-    return PlanetNoise::sampleHeight(
-        dir.x, dir.y, dir.z,
-        cfg.heightScale,
-        0.3f,   // seaFloor fraction
-        0);
-}
-
 // Compute a world-space position on the (displaced) sphere surface.
 static Vec3 surfacePos(int face, float u, float v, const PlanetConfig& cfg) {
     Vec3 dir = faceUVtoDir(face, u, v);
-    float h  = PlanetNoise::sampleHeight(dir.x, dir.y, dir.z, cfg.heightScale);
-    h = std::max(h, 0.0f); // Clamp to sea level for a flat water surface
-    float r  = cfg.radius + h;
-    return {
-        cfg.center.x + dir.x * r,
-        cfg.center.y + dir.y * r,
-        cfg.center.z + dir.z * r,
-    };
+    float h = PlanetNoise::sampleHeight(dir.x, dir.y, dir.z, cfg.heightScale, 0.3f, 0);
+    h = std::max(h, 0.0f);  // clamp geometry only
+    return cfg.center + dir * (cfg.radius + h);
 }
 
 // ── PlanetFaceTree::buildMesh ─────────────────────────────────────────────────
@@ -71,9 +55,6 @@ void PlanetFaceTree::buildMesh(PlanetNode* node, ID3D11Device* dev) {
         for (int col = 0; col < res; col++) {
             float u = node->u0 + col * du;
 
-            // Surface position at this vertex
-            Vec3 pos = surfacePos(node->face, u, v, cfg);
-
             // Approximate normal: central finite difference on the sphere surface.
             // Sample two neighbours in each direction, compute tangents, cross product.
             Vec3 px = surfacePos(node->face, u + eps, v, cfg);
@@ -92,9 +73,18 @@ void PlanetFaceTree::buildMesh(PlanetNode* node, ID3D11Device* dev) {
             };
             nrm = nrm.normalised();
 
-            // Normalised height for biome colour blending in the shader
-            float rawH = sampleH(node->face, u, v, cfg);
-            float normH = (rawH + cfg.heightScale * 0.3f) / (cfg.heightScale * 1.3f);
+            Vec3 dir = faceUVtoDir(node->face, u, v);
+            // ONE call, consistent seaFloor (use cfg.seaFloor or hardcode 0.3f — just be consistent)
+            float rawH = PlanetNoise::sampleHeight(dir.x, dir.y, dir.z, cfg.heightScale, 0.3f, 0);
+
+            // Geometry: clamped (no spikes)
+            float geomH = std::max(rawH, 0.0f);
+            Vec3 pos = cfg.center + dir * (cfg.radius + geomH);
+
+            // Colour: raw value drives normH
+            // With seaFloor=0.3: ocean rawH = -6000, coastline rawH = 0
+            // Anchor: rawH=0 → normH=0.218 (ocean), rawH=300 → normH=0.23 (start of beach)
+            float normH = 0.23f + ((rawH - 300.f) / (cfg.heightScale * 0.985f)) * 0.77f;
             normH = std::max(0.f, std::min(1.f, normH));
 
             PlanetVertex pv;

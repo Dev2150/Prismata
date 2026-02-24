@@ -154,9 +154,6 @@ inline float sampleHeight(float dx, float dy, float dz,
     // Low-frequency continent mask [0,1]: 0=deep ocean, 1=high land
     float continent = continentMask(dx, dy, dz, 0.35f);
 
-    // Ocean floor: slight undulation below sea level
-    float oceanH = fbm(dx, dy, dz, 3, 0.8f, 0.45f, 2.1f) * 0.15f;
-
     // Land terrain: blend between rolling hills and sharp mountains
     float hills   = fbm   (dx, dy, dz, 7, 1.2f, 0.52f, 2.f);
     float mounts  = ridged(dx, dy, dz, 5, 1.6f, 0.48f, 2.2f);

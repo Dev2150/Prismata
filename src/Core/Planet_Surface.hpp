@@ -44,8 +44,7 @@ struct PlanetSurface {
     // Noise-based height above the sphere's base radius (negative = below).
     float noiseHeight(Vec3 worldPos) const {
         Vec3 d = (worldPos - center).normalised();
-        float h = PlanetNoise::sampleHeight(d.x, d.y, d.z, heightScale);
-        return std::max(h, 0.0f); // Clamp to sea level
+        return PlanetNoise::sampleHeight(d.x, d.y, d.z, heightScale, 0.3f, 0);
     }
 
 

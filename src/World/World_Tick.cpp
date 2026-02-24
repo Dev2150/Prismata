@@ -44,7 +44,7 @@ void World::handleReproduction(float dt) {
     for (auto& c : creatures) {
         if (!c.alive) continue;
         if (c.behavior == BehaviorState::Mating) continue;
-        if (c.needs.level[(int)Drive::Libido] < 0.7f) continue;
+        if (c.needs.urgency[(int)Drive::Libido] < 0.7f) continue;
         if (c.nearestMate == INVALID_ID) continue;
         if (c.nearestMateDist > 150.f) continue;
 

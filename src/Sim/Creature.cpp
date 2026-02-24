@@ -27,6 +27,15 @@ float Creature::tick(float dt, World& world) {
     // fall-through to idle when a target is unavailable.
     switch (active) {
 
+    // HEALTH: rest to recover health
+    case Drive::Health:
+        behavior = BehaviorState::Healing;
+        vel = {0, 0, 0};
+        if (needs.urgency[(int)Drive::Hunger] < 0.8f && needs.urgency[(int)Drive::Thirst] < 0.8f) {
+            needs.satisfy(Drive::Health, 0.01f * dt);
+        }
+        break;
+
     // FLEE: highest-priority survival response. Overrides all other drives.
     case Drive::Fear:
         behavior = BehaviorState::Fleeing;

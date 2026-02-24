@@ -49,7 +49,7 @@ bool World::saveToFile(const char* path) const {
 
     // Header
     f.write("EVOS", 4);
-    writeU32(2);   // version
+    writeU32(3);   // version
 
     // World time and ID counters
     writeF(simTime);
@@ -81,8 +81,9 @@ bool World::saveToFile(const char* path) const {
         writeFA(c.genome.raw.data(), GENOME_SIZE);
 
         // Needs
-        writeFA(c.needs.level.data(), DRIVE_COUNT);
+        writeFA(c.needs.urgency.data(), DRIVE_COUNT);
         writeFA(c.needs.craveRate.data(), DRIVE_COUNT);
+        writeFA(c.needs.desireMult.data(), DRIVE_COUNT);
 
         // Biology
         writeF(c.energy);
@@ -147,7 +148,7 @@ bool World::loadFromFile(const char* path) {
     if (std::strncmp(magic, "EVOS", 4) != 0) return false;
 
     uint32_t version = readU32();
-    if (version != 2) return false;   // incompatible version
+    if (version != 3) return false;   // incompatible version
 
     // ── World state ───────────────────────────────────────────────────────────
     simTime       = readF();
@@ -177,8 +178,9 @@ bool World::loadFromFile(const char* path) {
 
         readFA(c.genome.raw.data(), GENOME_SIZE);
 
-        readFA(c.needs.level.data(), DRIVE_COUNT);
+        readFA(c.needs.urgency.data(), DRIVE_COUNT);
         readFA(c.needs.craveRate.data(), DRIVE_COUNT);
+        readFA(c.needs.desireMult.data(), DRIVE_COUNT);
 
         c.energy    = readF();
         c.maxEnergy = readF();

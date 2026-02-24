@@ -40,6 +40,15 @@ enum GeneIdx : int {
     GENE_SOCIAL_RATE,       // [0, 0.015] herding instinct (unused drive for now)
     GENE_TERRITORIAL_RATE,  // [0, 0.01]  territory-marking drive (reserved for future use)
 
+    // ── Desires (multipliers for needs) ───────────────────────────────────────
+    GENE_DESIRE_HEALTH,
+    GENE_DESIRE_HUNGER,
+    GENE_DESIRE_THIRST,
+    GENE_DESIRE_SLEEP,
+    GENE_DESIRE_LIBIDO,
+    GENE_DESIRE_FEAR,
+    GENE_DESIRE_SOCIAL,
+
     // ── Reproduction ─────────────────────────────────────────────────────────
     GENE_GESTATION_TIME,    // [5, 60] seconds – countdown from mating to birth
     GENE_LITTER_BIAS,       // [0, 1] – raw value maps to litter size 1–3
@@ -85,6 +94,14 @@ struct Genome {
     float libidoRate()      const { return map(GENE_LIBIDO_RATE,     0.002f, 0.02f); }
     float fearSensitivity() const { return raw[GENE_FEAR_SENSITIVITY]; }
     float socialRate()      const { return map(GENE_SOCIAL_RATE,     0.0f,  0.015f); }
+
+    float desireHealth()    const { return map(GENE_DESIRE_HEALTH,   0.1f, 5.0f); }
+    float desireHunger()    const { return map(GENE_DESIRE_HUNGER,   0.1f, 5.0f); }
+    float desireThirst()    const { return map(GENE_DESIRE_THIRST,   0.1f, 5.0f); }
+    float desireSleep()     const { return map(GENE_DESIRE_SLEEP,    0.1f, 5.0f); }
+    float desireLibido()    const { return map(GENE_DESIRE_LIBIDO,   0.1f, 5.0f); }
+    float desireFear()      const { return map(GENE_DESIRE_FEAR,     0.1f, 10.0f); }
+    float desireSocial()    const { return map(GENE_DESIRE_SOCIAL,   0.0f, 5.0f); }
 
     float gestationTime()   const { return map(GENE_GESTATION_TIME,  5.0f,  60.0f); }
     // Litter size: raw 0 → 1 offspring, raw 1 → 3 offspring (integer result)
@@ -147,6 +164,14 @@ struct Genome {
         // Latent drives near-zero so they don't distort early evolution
         g.raw[GENE_SOCIAL_RATE]      = rng.range(0.0f, 0.1f);
         g.raw[GENE_TERRITORIAL_RATE] = rng.range(0.0f, 0.05f);
+
+        g.raw[GENE_DESIRE_HEALTH] = rng.range(0.4f, 0.6f);
+        g.raw[GENE_DESIRE_HUNGER] = rng.range(0.4f, 0.6f);
+        g.raw[GENE_DESIRE_THIRST] = rng.range(0.4f, 0.6f);
+        g.raw[GENE_DESIRE_SLEEP]  = rng.range(0.4f, 0.6f);
+        g.raw[GENE_DESIRE_LIBIDO] = rng.range(0.4f, 0.6f);
+        g.raw[GENE_DESIRE_FEAR]   = rng.range(0.6f, 0.8f);
+        g.raw[GENE_DESIRE_SOCIAL] = rng.range(0.0f, 0.2f);
         return g;
     }
 
@@ -157,6 +182,14 @@ struct Genome {
         g.raw[GENE_CARN_EFFICIENCY] = rng.range(0.6f, 1.0f);  // good at meat
         g.raw[GENE_SOCIAL_RATE]      = rng.range(0.0f, 0.1f);
         g.raw[GENE_TERRITORIAL_RATE] = rng.range(0.0f, 0.05f);
+
+        g.raw[GENE_DESIRE_HEALTH] = rng.range(0.4f, 0.6f);
+        g.raw[GENE_DESIRE_HUNGER] = rng.range(0.4f, 0.6f);
+        g.raw[GENE_DESIRE_THIRST] = rng.range(0.4f, 0.6f);
+        g.raw[GENE_DESIRE_SLEEP]  = rng.range(0.4f, 0.6f);
+        g.raw[GENE_DESIRE_LIBIDO] = rng.range(0.4f, 0.6f);
+        g.raw[GENE_DESIRE_FEAR]   = rng.range(0.6f, 0.8f);
+        g.raw[GENE_DESIRE_SOCIAL] = rng.range(0.0f, 0.2f);
         return g;
     }
 

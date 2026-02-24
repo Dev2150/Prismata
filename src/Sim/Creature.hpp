@@ -23,6 +23,7 @@ enum class BehaviorState {
     Fleeing,     // Running away from the nearest predator
     Hunting,     // Chasing and biting a prey creature
     Mating,      // Gestation in progress; waiting for gestTimer to reach zero
+    Healing,     // Resting to recover health
 };
 
 // Convenience distance function between two 3D points (XYZ Euclidean)

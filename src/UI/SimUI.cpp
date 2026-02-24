@@ -209,7 +209,7 @@ void SimUI::drawTerrainHoverTooltip(const World& world) {
             ImGui::Text("Age: %.1f / %.1f", c.age, c.lifespan);
 
             const char* bhNames[] = {"Idle","SeekFood","SeekWater","Sleep",
-                                     "SeekMate","Flee","Hunt","Mating"};
+                                     "SeekMate","Flee","Hunt","Mating","Healing"};
             ImGui::Text("Action: %s", bhNames[(int)c.behavior]);
         } else {
             ImGui::Text("Creature died.");
@@ -584,15 +584,16 @@ void SimUI::drawEntityInspector(const World& world) {
 
             // Behaviour
             const char* bhNames[] = {"Idle","SeekFood","SeekWater","Sleep",
-                                     "SeekMate","Flee","Hunt","Mating"};
+                                     "SeekMate","Flee","Hunt","Mating","Healing"};
             ImGui::Text("Behavior: %s", bhNames[(int)c.behavior]);
 
             ImGui::Separator();
             ImGui::Text("Needs:");
             for (int i = 0; i < DRIVE_COUNT; i++) {
-                float lvl = c.needs.level[i];
-                ImVec4 col = {lvl, 1.f - lvl, 0.2f, 1.f};
-                ImGui::TextColored(col, "  %-10s %.2f", driveName((Drive)i), lvl);
+                float lvl = c.needs.urgency[i];
+                float des = c.needs.desireMult[i];
+                ImVec4 col = {0.5f * (1 + lvl), 0.5f * (1 - lvl), 0.5f * (1 - lvl), 1.f};
+                ImGui::TextColored(col, "  %-10s Want: %.2f", driveName((Drive)i), lvl * des);
                 ImGui::SameLine();
                 ImGui::ProgressBar(lvl, ImVec2(120, 0));
             }
@@ -603,6 +604,8 @@ void SimUI::drawEntityInspector(const World& world) {
                 "BodySize","MaxSpeed","MaxSlope","VisionRange","VisionFOV",
                 "HerbEff","CarnEff","HungerRate","ThirstRate","SleepRate",
                 "LibidoRate","FearSens","SocialRate","TerritRate",
+                "DesireHealth","DesireHunger","DesireThirst","DesireSleep",
+                "DesireLibido","DesireFear","DesireSocial",
                 "GestTime","LitterBias","MutRate","MutStd","Hue","Pattern"
             };
             for (int i = 0; i < GENOME_SIZE; i++) {

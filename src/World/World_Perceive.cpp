@@ -60,7 +60,7 @@ void World::perceive(Creature& c) {
             bool oIsPrey     = c.isCarnivore() && o.isHerbivore();   // c can hunt o
             // A potential mate must be the same species AND have a high libido drive
             bool oIsMate     = (o.speciesID == c.speciesID)
-                            && (o.needs.level[(int)Drive::Libido] > 0.5f);
+                            && (o.needs.urgency[(int)Drive::Libido] > 0.5f);
 
             if (oIsPredator && d < c.nearestPredDist) {
                 c.nearestPredDist = d; c.nearestPredator = oid;

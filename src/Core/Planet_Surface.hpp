@@ -60,8 +60,7 @@ struct PlanetSurface {
 
     // Is this surface point below sea level?
     bool isOcean(Vec3 worldPos) const {
-        Vec3 d = (worldPos - center).normalised();
-        return isOceanFast(d.x, d.y, d.z);  // 4X faster
+        return noiseHeight(worldPos) <= 0.0f;
     }
 
     // ── Terrain queries (sphere-surface analogues of flat-world methods) ───────

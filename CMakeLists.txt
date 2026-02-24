@@ -54,7 +54,30 @@ set(SOURCES
     implot/implot_demo.cpp
 )
 
-add_executable(KyberPlanet WIN32 ${SOURCES})
+# --------------
+file(GLOB_RECURSE SHADERS "src/Shaders/*.hlsl")
+# Create a list to hold the destination paths
+set(COPIED_SHADERS "")
+# Tell CMake to copy each modified shader
+foreach(SHADER ${SHADERS})
+    # Extract just the filename (e.g., "Planet.hlsl")
+    get_filename_component(SHADER_NAME "${SHADER}" NAME)
+    # Define where it should go in the build folder (build_dir/Shaders/Planet.hlsl)
+    set(DEST "${CMAKE_CURRENT_BINARY_DIR}/Shaders/${SHADER_NAME}")
+    # Create a rule to copy the file when the source changes
+    add_custom_command(
+            OUTPUT "${DEST}"
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/Shaders"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SHADER}" "${DEST}"
+            DEPENDS "${SHADER}"
+            COMMENT "Updating shader: ${SHADER_NAME}"
+    )
+    # Add the destination file to our list of required outputs
+    list(APPEND COPIED_SHADERS "${DEST}")
+endforeach()
+
+# 4. Add BOTH lists to your executable
+add_executable(KyberPlanet WIN32 ${SOURCES} ${COPIED_SHADERS})
 
 # Copy folders to the build directory after compiling
 add_custom_command(TARGET KyberPlanet POST_BUILD

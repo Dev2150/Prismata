@@ -48,15 +48,24 @@ void SimUI::draw(World& world, DataRecorder& rec, Renderer& rend) {
     tickNotifications(realDt, world);
 
     drawMainMenuBar(world, rec, rend);
-    drawSimControls(world, rend);
-    drawPopStats(world, rec);
-    drawEntityInspector(world);
-    drawSpeciesPanel(world);
-    drawGeneCharts(world, rec);
-    drawPlayerPanel(world, rend);
-    g_planet.drawDebugUI();
+    
+    if (showPanels) {
+        if (showSimControls) drawSimControls(world, rend);
+        if (showPopStats)    drawPopStats(world, rec);
+        if (showInspector)   drawEntityInspector(world);
+        if (showSpecies)     drawSpeciesPanel(world);
+        if (showGeneCharts)  drawGeneCharts(world, rec);
+        if (showPlayerPanel) drawPlayerPanel(world, rend);
 
-    if (showSettings) drawSettingsWindow(world, rend);
+        if (showPlanetDebug) {
+            if (ImGui::Begin("Planet Debug", &showPlanetDebug)) {
+                g_planet.drawDebugUI();
+            }
+            ImGui::End();
+        }
+
+        if (showSettings) drawSettingsWindow(world, rend);
+    }
 
     drawTerrainHoverTooltip(world);
 
@@ -231,15 +240,21 @@ void SimUI::drawMainMenuBar(World& world, DataRecorder& rec, Renderer& rend) {
     }
 
     if (ImGui::BeginMenu("View")) {
+        ImGui::Checkbox("Show UI Panels (Master)", &showPanels);
+        ImGui::Separator();
+        ImGui::Checkbox("Simulation Controls", &showSimControls);
+        ImGui::Checkbox("Population Statistics", &showPopStats);
+        ImGui::Checkbox("Entity Inspector", &showInspector);
+        ImGui::Checkbox("Species", &showSpecies);
+        ImGui::Checkbox("Gene Evolution", &showGeneCharts);
+        ImGui::Checkbox("Player Mode", &showPlayerPanel);
+        ImGui::Checkbox("Planet Debug", &showPlanetDebug);
+        ImGui::Checkbox("Settings", &showSettings);
+        ImGui::Separator();
         ImGui::Checkbox("Wireframe",   &rend.wireframe);
         ImGui::Checkbox("FOV Cone",    &rend.showFOVCone);
         ImGui::Separator();
         ImGui::Checkbox("ImGui Demo",  &showDemoWindow);
-        ImGui::EndMenu();
-    }
-
-    if (ImGui::BeginMenu("Settings")) {
-        if (ImGui::MenuItem("Open Settings")) showSettings = true;
         ImGui::EndMenu();
     }
 
@@ -309,7 +324,7 @@ void SimUI::drawMainMenuBar(World& world, DataRecorder& rec, Renderer& rend) {
 
 // ── Sim controls ──────────────────────────────────────────────────────────────
 void SimUI::drawSimControls(World& world, Renderer& rend) {
-    ImGui::Begin("Simulation Controls");
+    if (!ImGui::Begin("Simulation Controls", &showSimControls)) { ImGui::End(); return; }
 
     // Pause / play buttons
     if (world.cfg.paused) {
@@ -386,7 +401,7 @@ void SimUI::drawSimControls(World& world, Renderer& rend) {
 
 // ── Population stats ──────────────────────────────────────────────────────────
 void SimUI::drawPopStats(const World& world, const DataRecorder& rec) {
-    ImGui::Begin("Population Statistics");
+    if (!ImGui::Begin("Population Statistics", &showPopStats)) { ImGui::End(); return; }
     int n = rec.size();
 
     if (n > 1 && ImPlot::BeginPlot("Population", ImVec2(-1, 180))) {
@@ -455,7 +470,7 @@ const char * SimUI::get_term_from_term(int total, int count_lower, int count_gre
 
 // ── Entity inspector ──────────────────────────────────────────────────────────
 void SimUI::drawEntityInspector(const World& world) {
-    ImGui::Begin("Entity Inspector");
+    if (!ImGui::Begin("Entity Inspector", &showInspector)) { ImGui::End(); return; }
 
     if (selectedID == INVALID_ID) {
         ImGui::TextDisabled("Click a creature to inspect.");
@@ -594,7 +609,7 @@ void SimUI::drawEntityInspector(const World& world) {
 
 // ── Species panel ─────────────────────────────────────────────────────────────
 void SimUI::drawSpeciesPanel(const World& world) {
-    ImGui::Begin("Species");
+    if (!ImGui::Begin("Species", &showSpecies)) { ImGui::End(); return; }
 
     // Count active
     int activeSp = 0;
@@ -636,7 +651,7 @@ void SimUI::drawSpeciesPanel(const World& world) {
 
 // ── Gene charts ───────────────────────────────────────────────────────────────
 void SimUI::drawGeneCharts(const World& world, const DataRecorder& rec) {
-    ImGui::Begin("Gene Evolution");
+    if (!ImGui::Begin("Gene Evolution", &showGeneCharts)) { ImGui::End(); return; }
     int n = rec.size();
 
     if (n > 1 && ImPlot::BeginPlot("Average Traits Over Time", ImVec2(-1, 200))) {
@@ -670,7 +685,7 @@ void SimUI::drawGeneCharts(const World& world, const DataRecorder& rec) {
 
 // ── Player panel ──────────────────────────────────────────────────────────────
 void SimUI::drawPlayerPanel(World& world, Renderer& rend) {
-    ImGui::Begin("Player Mode");
+    if (!ImGui::Begin("Player Mode", &showPlayerPanel)) { ImGui::End(); return; }
 
     if (rend.playerID == INVALID_ID) {
         ImGui::TextWrapped("Select a creature in the inspector, then possess it.");

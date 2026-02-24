@@ -39,7 +39,16 @@ struct SimUI {
     char       settingsPathBuf[256] = "settings.json";
 
     // ── Settings window ───────────────────────────────────────────────────────
-    bool       showSettings   = false;
+    bool       showSettings    = false;
+    bool       showPanels      = true;
+    bool       showSimControls = true;
+    bool       showPopStats    = true;
+    bool       showInspector   = true;
+    bool       showSpecies     = true;
+    bool       showGeneCharts  = true;
+    bool       showPlayerPanel = true;
+    bool       showPlanetDebug = true;
+
 
     // ── Histogram buffers ─────────────────────────────────────────────────────
     std::vector<float> histX, histY;

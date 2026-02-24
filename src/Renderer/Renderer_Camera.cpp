@@ -434,7 +434,7 @@ bool Renderer::screenToTerrain(float mx, float my, float W, float H,
 
     // Material: use biome colour from noise height
     float rawH = g_planet_surface.noiseHeight(outPos);  // must use seaFloor=0.3f internally
-    float normH = 0.23f + ((rawH - 300.f) / (g_planet_surface.heightScale * 0.985f)) * 0.77f;
+    float normH = 0.23f + (rawH - 300.f) / (g_planet_surface.heightScale * 0.985f) * 0.77f;
     normH = std::max(0.f, std::min(1.f, normH));
     if      (normH < 0.23f) outMat = 3;   // water
     else if (normH < 0.26f) outMat = 2;   // sand/beach

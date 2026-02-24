@@ -84,7 +84,7 @@ void PlanetFaceTree::buildMesh(PlanetNode* node, ID3D11Device* dev) {
             // Colour: raw value drives normH
             // With seaFloor=0.3: ocean rawH = -6000, coastline rawH = 0
             // Anchor: rawH=0 → normH=0.218 (ocean), rawH=300 → normH=0.23 (start of beach)
-            float normH = 0.23f + ((rawH - 300.f) / (cfg.heightScale * 0.985f)) * 0.77f;
+            float normH = 0.23f + (rawH - 300.f) / (cfg.heightScale * 0.985f) * 0.77f;
             normH = std::max(0.f, std::min(1.f, normH));
 
             PlanetVertex pv;

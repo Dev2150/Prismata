@@ -142,27 +142,24 @@ float3 triplanarNormal(Texture2D normTex, SamplerState samp,
 // Kept from the original shader; used when textures are not loaded.
 float3 biomeColor(float h) {
     // Colour keyframes: [height, r, g, b]
-    float3 deepOcean   = float3(0.02f, 0.07f, 0.25f);
-    float3 shallowSea  = float3(0.06f, 0.25f, 0.55f);
+    float3 deepOcean   = float3(0.02f, 0.06f, 0.22f);
+    float3 shallowSea  = float3(0.05f, 0.20f, 0.48f);
     float3 beach       = float3(0.76f, 0.70f, 0.50f);
     float3 lowland     = float3(0.22f, 0.48f, 0.14f);
     float3 highland    = float3(0.35f, 0.30f, 0.22f);
     float3 rock        = float3(0.45f, 0.42f, 0.40f);
     float3 snow        = float3(0.90f, 0.92f, 0.95f);
 
-    const float seaH   = 0.23f, beachH = 0.26f, lowH  = 0.32f;
+    const float seaH   = 0.23f, beachH = 0.27f, lowH  = 0.32f;
     const float highH  = 0.56f, rockH  = 0.75f, snowH = 0.85f;
 
-    float3 col;
-    if      (h < seaH)   col = lerp(deepOcean,  shallowSea, saturate(h / seaH));
-    else if (h < beachH) col = lerp(shallowSea, beach,      saturate((h - seaH)       / (beachH - seaH)));
-    else if (h < lowH)   col = lerp(beach,      lowland,    saturate((h - beachH)     / (lowH - beachH)));
-    else if (h < highH)  col = lerp(lowland,    highland,   saturate((h - lowH)       / (highH - lowH)));
-    else if (h < rockH)  col = lerp(highland,   rock,       saturate((h - highH)      / (rockH - highH)));
-    else if (h < snowH)  col = lerp(rock,       snow,       saturate((h - rockH)      / (snowH - rockH)));
-    else                 col = snow;
-
-    return col;
+    if (h < seaH)        return lerp(deepOcean, shallowSea, smoothstep(0.0f, seaH, h));
+    else if (h < beachH) return lerp(shallowSea, beach,      saturate((h - seaH)   / (beachH - seaH)));
+    else if (h < lowH)   return lerp(beach,      lowland,    saturate((h - beachH) / (lowH   - beachH)));
+    else if (h < highH)  return lerp(lowland,    highland,   saturate((h - lowH)   / (highH  - lowH)));
+    else if (h < rockH)  return lerp(highland,   rock,       saturate((h - highH)  / (rockH  - highH)));
+    else if (h < snowH)  return lerp(rock,       snow,       saturate((h - rockH)  / (snowH  - rockH)));
+    else                 return snow;
 }
 
 // ── Biome weight computation ──────────────────────────────────────────────────
@@ -179,7 +176,7 @@ float4 biomeWeights(float h) {
     const float bandW = 0.06f;   // blend band width
 
     float wGrass = saturate((h - 0.26f) / bandW) * saturate((0.58f - h) / bandW);
-    float wSand  = saturate((h - 0.20f) / bandW) * saturate((0.32f - h) / bandW);
+    float wSand  = saturate((h - 0.23f) / bandW) * saturate((0.32f - h) / bandW);
     float wRock  = saturate((h - 0.52f) / bandW) * saturate((0.88f - h) / bandW);
     float wSnow  = saturate((h - 0.80f) / bandW);
 
@@ -199,12 +196,17 @@ float4 PSMain(VOut v) : SV_TARGET {
     bool useTextures = (texParams.y > 0.5f);
     float scale = texParams.x;
 
+    // Calculate the procedural color first.
+    // This ensures we have the correct "Water" color available to blend against.
+    float3 procCol = biomeColor(v.height);
+
     float3 baseCol;
     float  roughness = 0.7f;
     float  ao        = 1.0f;
     float3 shadingN  = N;   // normal used for lighting (may be replaced by normal map)
 
-    if (useTextures && v.height > 0.22f) {
+    // Check if it is high enough to potentially have land textures
+    if (useTextures && v.height >= 0.23f) {
         // ── Compute per-biome triplanar samples ───────────────────────────────
         float4 W = biomeWeights(v.height);
 
@@ -213,23 +215,22 @@ float4 PSMain(VOut v) : SV_TARGET {
         float3 colSand  = triplanar(texColorSand,  texSampler, v.wpos, N, scale).rgb;
         float3 colRock  = triplanar(texColorRock,  texSampler, v.wpos, N, scale).rgb;
         float3 colSnow  = triplanar(texColorSnow,  texSampler, v.wpos, N, scale).rgb;
-
         // Blend colour
-        baseCol = colGrass * W.x + colSand * W.y + colRock * W.z + colSnow * W.w;
+        float3 texCol   = colGrass * W.x + colSand * W.y + colRock * W.z + colSnow * W.w;
 
         // AO
         float aoGrass = triplanar(texAOGrass, texSampler, v.wpos, N, scale).r;
         float aoSand  = triplanar(texAOSand,  texSampler, v.wpos, N, scale).r;
         float aoRock  = triplanar(texAORock,  texSampler, v.wpos, N, scale).r;
         float aoSnow  = triplanar(texAOSnow,  texSampler, v.wpos, N, scale).r;
-        ao = aoGrass * W.x + aoSand * W.y + aoRock * W.z + aoSnow * W.w;
+        float texAO   = aoGrass * W.x + aoSand * W.y + aoRock * W.z + aoSnow * W.w;
 
         // Roughness
         float roughGrass = triplanar(texRoughGrass, texSampler, v.wpos, N, scale).r;
         float roughSand  = triplanar(texRoughSand,  texSampler, v.wpos, N, scale).r;
         float roughRock  = triplanar(texRoughRock,  texSampler, v.wpos, N, scale).r;
         float roughSnow  = triplanar(texRoughSnow,  texSampler, v.wpos, N, scale).r;
-        roughness = roughGrass * W.x + roughSand * W.y + roughRock * W.z + roughSnow * W.w;
+        float texRough   = roughGrass * W.x + roughSand * W.y + roughRock * W.z + roughSnow * W.w;
 
         // Normal map — blend in world space then combine with vertex normal
         float3 nmGrass = triplanarNormal(texNormalGrass, texSampler, v.wpos, N, scale);
@@ -238,14 +239,29 @@ float4 PSMain(VOut v) : SV_TARGET {
         float3 nmSnow  = triplanarNormal(texNormalSnow,  texSampler, v.wpos, N, scale);
         float3 texNorm = normalize(nmGrass * W.x + nmSand * W.y + nmRock * W.z + nmSnow * W.w);
 
-        // Blend the texture normal with the geometric normal.
-        // weight=0.6 preserves macro-scale shading while adding detail bumps.
-        const float NM_STRENGTH = 0.6f;
-        shadingN = normalize(lerp(N, texNorm, NM_STRENGTH));
+        // BLEND PROCEDURAL WATER WITH TEXTURED LAND ---
+
+        // Create a blend factor that is 0.0 at height 0.22 and 1.0 at height 0.24
+        // This creates a smooth transition zone at the shoreline.
+        float shoreBlend = smoothstep(0.23f, 0.27f, v.height);
+
+        // Lerp everything based on this shoreBlend
+        baseCol   = lerp(procCol, texCol,   shoreBlend);
+        ao        = lerp(1.0f,    texAO,    shoreBlend);
+
+        // Water is glossy (0.15), Land is rough (texRough)
+        roughness = lerp(0.15f,   texRough, shoreBlend);
+
+        // Blend normals: Water uses geometry normal (N), Land uses normal map (texNorm)
+        // We also keep your existing NM_STRENGTH logic for the land part
+        float3 landN = normalize(lerp(N, texNorm, 0.6f));
+        shadingN     = normalize(lerp(N, landN,   shoreBlend));
 
     } else {
-        // Fallback: procedural colours only
-        baseCol  = biomeColor(v.height);
+        // Fallback: Deep water or no textures loaded
+        baseCol   = procCol;
+
+        // Procedural roughness logic
         roughness = (v.height < 0.23f) ? 0.15f   // water = glossy
                   : (v.height > 0.80f) ? 0.85f   // snow  = matte
                   : 0.65f;

@@ -409,8 +409,7 @@ void PlanetRenderer::uploadFrameConstants(const World &world, const Renderer &re
     // The standard camera far plane of 1000 clips most of the sphere away.
     // near=10 is fine here because the planet surface is never closer than ~800 units.
     float planetFar = cfg.radius * 4.f + 1000.f; // e.g. 5000 for radius=1000
-    Mat4 proj = Mat4::perspectiveRH(
-        rend.camera.fovY * 3.14159265f / 180.f, aspect, 10.f, planetFar);
+    Mat4 proj = rend.camera.projMatrix(aspect);
 
     Mat4 vp = (view * proj).transposed();
 

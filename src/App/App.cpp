@@ -311,9 +311,9 @@ int RunApplication()
         g_planet.render(g_world, g_renderer, aspect);
 
         // Clear depth so creatures and FOV cone draw on top of the planet
-        if (g_renderer.depthDSV)
-            g_pd3dDeviceContext->ClearDepthStencilView(
-                g_renderer.depthDSV.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+        // if (g_renderer.depthDSV)
+        //     g_pd3dDeviceContext->ClearDepthStencilView(
+        //         g_renderer.depthDSV.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
 
         // Creature billboards + FOV cone (Renderer, uses creature positions
         //    which are now 3-D sphere-surface points).

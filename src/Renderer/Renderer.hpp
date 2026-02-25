@@ -31,7 +31,7 @@ struct Camera {
 
     Mat4 projMatrix(float aspect) const {
         return Mat4::perspectiveRH(
-            fovY * 3.14159265f / 180.f, aspect, 1.f, 600000.f);
+            fovY * 3.14159265f / 180.f, aspect, 10.f, 600000.f);
     }
 };
 

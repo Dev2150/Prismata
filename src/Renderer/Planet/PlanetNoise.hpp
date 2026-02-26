@@ -60,17 +60,23 @@ inline float grad3(int hash, float x, float y, float z) {
     return ((h & 1) ? -u : u) + ((h & 2) ? -v : v);
 }
 
+// Branchless fast floor
+inline int fast_floor(float x) {
+    int i = static_cast<int>(x);
+    return i - (x < i);
+}
+
 // ── Single-octave 3D Perlin noise → result ∈ [-1, 1] ─────────────────────────
 inline float perlin3(float x, float y, float z) {
     const int* P = state().P;
 
-    int X = (int)std::floor(x) & 255;
-    int Y = (int)std::floor(y) & 255;
-    int Z = (int)std::floor(z) & 255;
+    int X = fast_floor(x) & 255;
+    int Y = fast_floor(y) & 255;
+    int Z = fast_floor(z) & 255;
 
-    x -= std::floor(x);
-    y -= std::floor(y);
-    z -= std::floor(z);
+    x -= fast_floor(x);
+    y -= fast_floor(y);
+    z -= fast_floor(z);
 
     float u = fade(x), v = fade(y), w = fade(z);
 

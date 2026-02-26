@@ -77,6 +77,9 @@ struct Creature {
     float    nearestWaterDist= 1e9f;
     float    waterCacheTimer = 0.f;
 
+    float    cachedSlope     = 0.f;     // Cached terrain slope
+    float    slopeTimer      = 0.f;     // Timer to stagger slope updates
+
     // ── Lifecycle ─────────────────────────────────────────────────────────────
     // Called once after the genome is set to derive all genome-dependent stats.
     void initFromGenome(const Vec3& spawnPos) {

@@ -14,7 +14,7 @@
 //  5. Scan all plants for the nearest visible food source
 //  6. Search nearby tiles for the nearest water source
 //  7. Update the Fear drive based on predator proximity
-void World::perceive(Creature& c) {
+void World::perceive(Creature& c, float dt) {
     ZoneScoped;
     float range  = c.genome.visionRange();
     // Half-angle of the FOV cone in radians; creatures behind are invisible
@@ -37,7 +37,9 @@ void World::perceive(Creature& c) {
 
     {
         ZoneScopedN("perceive_creatures");
-        auto nearby = queryRadius(c.pos, range);
+        static thread_local std::vector<uint32_t> nearby; // Reused capacity
+        queryRadius(c.pos, range, nearby);
+
         float nearestPredDist2 = 1e18f;
         float nearestPreyDist2 = 1e18f;
         float nearestMateDist2 = 1e18f;
@@ -132,10 +134,10 @@ void World::perceive(Creature& c) {
     {
         ZoneScopedN("perceive_water");
         // Water search: only run if the cache timer has expired
-        c.waterCacheTimer -= 1.f / 60.f;
+        c.waterCacheTimer -= dt;
 
         if (c.waterCacheTimer <= 0.f) {
-            c.waterCacheTimer = 2.0f;
+            c.waterCacheTimer = 2.0f + globalRNG().range(0.0f, 1.0f); // Stagger
             Vec3 waterPos;
             if (g_planet_surface.findOcean(c.pos, range, waterPos)) {
                 c.nearestWater = waterPos;

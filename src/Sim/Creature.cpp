@@ -59,8 +59,13 @@ float Creature::tick(float dt, World& world) {
 
     Drive active = needs.activeDrive();  // which drive governs behaviour this frame
     float spd    = speedCap();           // energy-throttled top speed
-    // Use 3-D slope from planet surface
-    float slope = world.slopeAt3D(pos);
+
+    slopeTimer -= dt;
+    if (slopeTimer <= 0.f) {
+        cachedSlope = world.slopeAt3D(pos);
+        slopeTimer = 0.5f + globalRNG().range(0.0f, 0.2f); // stagger updates
+    }
+    float slope = cachedSlope;
 
     // ── Behaviour state machine ───────────────────────────────────────────────
     // Each case sets `behavior`, then either steers the creature or modifies

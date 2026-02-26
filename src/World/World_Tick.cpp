@@ -79,7 +79,7 @@ void World::tick(float dt) {
     // Separating the passes ensures a creature can't react to changes made by
     // another creature in the same tick (fair simultaneous update semantics).
     for (auto& c : creatures)
-        if (c.alive) perceive(c);
+        if (c.alive) perceive(c, dt);
 
     for (auto& c : creatures)
         if (c.alive) c.tick(dt, *this);

@@ -138,7 +138,7 @@ private:
     void  growPlants(float dt);
     void  tickCreatures(float dt);
     void  handleReproduction(float dt);
-    void  perceive(Creature& c);      // update perception cache
+    void  perceive(Creature& c, float dt);       // update perception cache
 
     Chunk*       chunkAt(int cx, int cz);
     const Chunk* chunkAt(int cx, int cz) const;
@@ -150,7 +150,7 @@ private:
 
     // Simple spatial hash for creature proximity queries
     void rebuildSpatialHash();
-    std::vector<uint32_t> queryRadius(const Vec3& center, float radius) const;
+    void queryRadius(const Vec3& center, float radius, std::vector<uint32_t>& out) const;
 
     struct SpatialHash {
         float cellSize = 500.f;

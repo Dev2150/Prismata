@@ -68,8 +68,8 @@ void World::rebuildSpatialHash() {
 // Checks every grid cell that overlaps the query circle (a square ring of cells),
 // then filters by actual Euclidean distance to avoid returning corners of the
 // bounding square.
-std::vector<uint32_t> World::queryRadius(const Vec3& center, float radius) const {
-    std::vector<uint32_t> result;
+void World::queryRadius(const Vec3& center, float radius, std::vector<uint32_t>& out) const {
+    out.clear();
     float radius2 = radius * radius;
     int r = (int)std::ceil(radius / spatialHash.cellSize);
     int cx0 = (int)std::floor(center.x / spatialHash.cellSize) + SpatialHash::GRID_OFFSET;
@@ -90,12 +90,11 @@ std::vector<uint32_t> World::queryRadius(const Vec3& center, float radius) const
 
                 const Creature& c2 = creatures[cIdx];
                 if ((c2.pos - center).len2() <= radius2) {
-                    result.push_back(cIdx);
+                    out.push_back(cIdx);
                 }
             }
         }
     }
-    return result;
 }
 
 EntityID World::findRandomLivingCreature() const {

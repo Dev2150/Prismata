@@ -129,7 +129,7 @@ struct PlanetSurface {
                    n.x*east.y - n.y*east.x};
 
         // Adaptive step size to prevent millions of iterations on large vision ranges
-        const float step  = std::max(50.f, searchRadius / 16.f);
+        const float step  = std::max(100.f, searchRadius / 8.f);
         int         steps = (int)(searchRadius / step) + 1;
         float       bestD = 1e9f;
         bool        found = false;

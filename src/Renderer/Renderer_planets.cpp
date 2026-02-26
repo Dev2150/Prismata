@@ -29,7 +29,7 @@ static const float PLANT_COLORS[3][4] = {
     { 0.15f, 0.42f, 0.12f, 0.95f },   // tree   – dark green
 };
 
-static const float PLANT_SIZES[3] = { 0.6f, 1.2f, 2.0f };
+static const float PLANT_SIZES[3] = { 60.f, 120.f, 200.f };
 
 // ── plantVisibleFromCamera ────────────────────────────────────────────────────
 // Identical geometric test to isVisibleFromCamera in Renderer_Creatures.cpp.

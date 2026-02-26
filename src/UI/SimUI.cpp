@@ -591,8 +591,8 @@ void SimUI::drawEntityInspector(const World& world) {
             ImGui::Text("Needs:");
             if (ImGui::BeginTable("NeedsTable", 3, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp)) {
                 ImGui::TableSetupColumn("Drive", ImGuiTableColumnFlags_WidthFixed, 60.f);
-                ImGui::TableSetupColumn("Want", ImGuiTableColumnFlags_None);
                 ImGui::TableSetupColumn("Need", ImGuiTableColumnFlags_None);
+                ImGui::TableSetupColumn("Want", ImGuiTableColumnFlags_None);
                 ImGui::TableHeadersRow();
 
                 for (int i = 0; i < DRIVE_COUNT; i++) {
@@ -616,18 +616,19 @@ void SimUI::drawEntityInspector(const World& world) {
                     ImGui::Text("%s", driveName((Drive)i));
 
                     ImGui::TableSetColumnIndex(1);
+                    char needBuf[32];
+                    std::snprintf(needBuf, sizeof(needBuf), "%d%%", (int)(lvl * 100));
+                    ImGui::PushStyleColor(ImGuiCol_PlotHistogram, col);
+                    ImGui::ProgressBar(lvl, ImVec2(-FLT_MIN, 0), needBuf);
+                    ImGui::PopStyleColor();
+
+                    ImGui::TableSetColumnIndex(2);
                     char wantBuf[32];
                     std::snprintf(wantBuf, sizeof(wantBuf), "%.2f", want);
                     ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImVec4(0.2f, 0.6f, 1.0f, 1.f));
                     ImGui::ProgressBar(std::min(want / 5.0f, 1.0f), ImVec2(-FLT_MIN, 0), wantBuf);
                     ImGui::PopStyleColor();
 
-                    ImGui::TableSetColumnIndex(2);
-                    char needBuf[32];
-                    std::snprintf(needBuf, sizeof(needBuf), "%d%%", (int)(lvl * 100));
-                    ImGui::PushStyleColor(ImGuiCol_PlotHistogram, col);
-                    ImGui::ProgressBar(lvl, ImVec2(-FLT_MIN, 0), needBuf);
-                    ImGui::PopStyleColor();
                 }
                 ImGui::EndTable();
             }

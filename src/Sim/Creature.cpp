@@ -16,6 +16,9 @@ float Creature::tick(float dt, World& world) {
     if (ageFrac > 0.8f)
         energy -= 0.02f * mass * dt;
 
+    // Connect hunger directly to the lack of energy
+    needs.urgency[(int)Drive::Hunger] = 1.0f - std::clamp(energy / maxEnergy, 0.0f, 1.0f);
+
     Drive active = needs.activeDrive();  // which drive governs behaviour this frame
     float spd    = speedCap();           // energy-throttled top speed
     // Use 3-D slope from planet surface

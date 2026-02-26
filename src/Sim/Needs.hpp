@@ -74,7 +74,7 @@ struct Needs {
     // it's updated externally by perception (raiseFear / decayFear).
     void tick(float dt) {
         for (int i = 0; i < DRIVE_COUNT; i++) {
-            if (i == (int)Drive::Fear || i == (int)Drive::Health) continue;
+            if (i == (int)Drive::Fear || i == (int)Drive::Health || i == (int)Drive::Hunger) continue;
             urgency[i] = std::min(1.f, urgency[i] + craveRate[i] * dt);
         }
         float damage_potential = 0.02 * dt;

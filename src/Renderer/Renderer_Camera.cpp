@@ -400,28 +400,42 @@ bool Renderer::screenToTerrain(float mx, float my, float W, float H,
     float sqrtDisc = std::sqrt(disc);
     float t0 = -b - sqrtDisc;
     float t1 = -b + sqrtDisc;
-    // We want the first positive intersection (entry point)
-    float tHit = (t0 > 0.f) ? t0 : t1;
+    if (t1 < 0.f) return false; // entirely behind camera
+
+    // Raymarch from the camera (or outer sphere entry) to the inner sphere (or closest approach)
+    float tStart = std::max(0.f, t0);
+    float r_inner = g_planet_surface.radius - g_planet_surface.heightScale;
+    float c2_inner = ocx*ocx + ocy*ocy + ocz*ocz - r_inner*r_inner;
+    float disc_inner = b*b - c2_inner;
+    float tEnd = (disc_inner > 0.f) ? (-b - std::sqrt(disc_inner)) : t1;
+
+    float step = (tEnd - tStart) / 64.f;
+    float t = tStart;
+    float tHit = -1.f;
+
+    for (int i = 0; i <= 64; i++) {
+        Vec3 rpos = {near4.x + dx*t, near4.y + dy*t, near4.z + dz*t};
+        float surfR = g_planet_surface.radius + g_planet_surface.noiseHeight(rpos);
+        float rayR = (rpos - pc).len();
+        if (rayR < surfR) {
+            tHit = t;
+            break;
+        }
+        t += step;
+    }
+
     if (tHit < 0.f) return false;
 
-    // Binary search along the ray between tHit and tHit + 2*height_scale
+    // Binary search along the ray between tHit - step and tHit
     // to find where the ray first dips below the displaced surface.
-    float lo = std::max(0.f, tHit - g_planet_surface.heightScale);
-    float hi = tHit + g_planet_surface.heightScale * 2.f;
+    float lo = std::max(0.f, tHit - step);
+    float hi = tHit;
 
-    for (int iter = 0; iter < 24; iter++) {
+    for (int iter = 0; iter < 16; iter++) {
         float mid = (lo + hi) * 0.5f;
-        float rx = near4.x + dx*mid;
-        float ry = near4.y + dy*mid;
-        float rz = near4.z + dz*mid;
-        Vec3  rpos = {rx, ry, rz};
-
-        // Check if this point is inside the displaced surface
-        Vec3 dir = (rpos - pc).normalised();
-        float surfR = g_planet_surface.radius
-                    + g_planet_surface.noiseHeight(rpos);
-        float rayR  = (rpos - pc).len();
-
+        Vec3 rpos = {near4.x + dx*mid, near4.y + dy*mid, near4.z + dz*mid};
+        float surfR = g_planet_surface.radius + g_planet_surface.noiseHeight(rpos);
+        float rayR = (rpos - pc).len();
         if (rayR < surfR)
             hi = mid;   // inside surface: hit is earlier
         else

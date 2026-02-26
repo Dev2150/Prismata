@@ -77,14 +77,11 @@ struct Needs {
             if (i == (int)Drive::Fear || i == (int)Drive::Health) continue;
             urgency[i] = std::min(1.f, urgency[i] + craveRate[i] * dt);
         }
-
-        // Health impairment from high hunger or thirst
-        if (urgency[(int)Drive::Hunger] > 0.8f) {
-            urgency[(int)Drive::Health] = std::min(1.f, urgency[(int)Drive::Health] + 0.02f * dt);
-        }
-        if (urgency[(int)Drive::Thirst] > 0.8f) {
-            urgency[(int)Drive::Health] = std::min(1.f, urgency[(int)Drive::Health] + 0.04f * dt);
-        }
+        float damage_potential = 0.02 * dt;
+        if (isCritical(Drive::Hunger))
+            urgency[(int)Drive::Health] += damage_potential;
+        if (isCritical(Drive::Thirst))
+            urgency[(int)Drive::Health] += damage_potential;
     }
 
     // Reduce a drive urgency by `amount` (e.g. after eating, drinking, sleeping).

@@ -164,9 +164,15 @@ float Creature::tick(float dt, World& world) {
     energy     -= cost;
 
     // ── Death ─────────────────────────────────────────────────────────────────
-    if (energy <= 0.f) { alive = false; std::string msg = "Death: Lack of energy"; TracyMessageC(msg.c_str(), msg.size(), 0x444400); }
-    else if (age >= lifespan) { alive = false; std::string msg = "Death: Aging"; TracyMessageC(msg.c_str(), msg.size(), 0x004400); }
-    else if (needs.isCritical(Drive::Thirst)) { alive = false; std::string msg = "Death: Lack of water"; TracyMessageC(msg.c_str(), msg.size(), 0x440000); }
+    if (age >= lifespan) { alive = false; std::string msg = "Death: Aging"; TracyMessageC(msg.c_str(), msg.size(), 0x004400); }
+    else if (needs.isCritical(Drive::Health)) {
+        alive = false;
+        std::string msg;
+        if (needs.isCritical(Drive::Hunger))  msg = "Death: Lack of water";
+        else if(needs.isCritical(Drive::Thirst))  msg = "Death: Lack of water";
+        else msg = "Death: Lack of health";
+        TracyMessageC(msg.c_str(), msg.size(), 0x440000);
+    }
 
     return cost;
 }

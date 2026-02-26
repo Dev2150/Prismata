@@ -595,6 +595,15 @@ void SimUI::drawEntityInspector(const World& world) {
                 ImGui::TableSetupColumn("Want", ImGuiTableColumnFlags_None);
                 ImGui::TableHeadersRow();
 
+                float want_max = 0.f;
+                for (int i = 0; i < DRIVE_COUNT; i++) {
+                    float lvl = c.needs.urgency[i];
+                    float des = c.needs.desireMult[i];
+                    float want = lvl * des;
+                    if (want > want_max) want_max = want;
+
+                }
+
                 for (int i = 0; i < DRIVE_COUNT; i++) {
                     ImGui::TableNextRow();
                     float lvl = c.needs.urgency[i];
@@ -626,7 +635,7 @@ void SimUI::drawEntityInspector(const World& world) {
                     char wantBuf[32];
                     std::snprintf(wantBuf, sizeof(wantBuf), "%.2f", want);
                     ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImVec4(0.2f, 0.6f, 1.0f, 1.f));
-                    ImGui::ProgressBar(std::min(want / 5.0f, 1.0f), ImVec2(-FLT_MIN, 0), wantBuf);
+                    ImGui::ProgressBar(std::min(want / want_max, 1.0f), ImVec2(-FLT_MIN, 0), wantBuf);
                     ImGui::PopStyleColor();
 
                 }

@@ -74,8 +74,7 @@ void Renderer::renderPlants(const World& world) {
                     if (dist > pc.genome.visionRange())
                         continue;
                     Vec3 toP = (p.pos - pc.pos).normalised();
-                    Vec3 facing = {std::sin(pc.yaw), 0.f, std::cos(pc.yaw)};
-                    facing = g_planet_surface.projectToTangent(pc.pos, facing).normalised();
+                    Vec3 facing = g_planet_surface.facingDir(pc.pos, pc.yaw);
                     float fovRad = pc.genome.visionFOV() * 3.14159265f / 180.f;
                     if (toP.dot(facing) < std::cos(fovRad * 0.5f)) {
                         continue;

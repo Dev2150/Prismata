@@ -37,8 +37,7 @@ void Renderer::renderFOVCone(const World& world) {
     Vec3 n = g_planet_surface.normalAt(c.pos);  // outward normal = "up"
 
     // Forward vector in the tangent plane (from yaw)
-    Vec3 rawFwd = {std::sin(c.yaw), 0.f, std::cos(c.yaw)};
-    Vec3 fwd = g_planet_surface.projectToTangent(c.pos, rawFwd).normalised();
+    Vec3 fwd = g_planet_surface.facingDir(c.pos, c.yaw);
 
     // Right vector = normal × forward
     Vec3 right = {

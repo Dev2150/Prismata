@@ -51,38 +51,47 @@ void World::removeDeadCreatures() {
 // average number of creatures per query region — typically much smaller than n.
 void World::rebuildSpatialHash() {
     ZoneScoped;
-    for (auto& pair : spatialHash.cells) {
-        pair.second.clear(); // Keeps capacity, zero allocations
+    spatialHash.clear();
+    for (size_t i = 0; i < creatures.size(); i++) {
+        if (!creatures[i].alive) continue;
+        spatialHash.add(creatures[i].pos.x, creatures[i].pos.z, (uint32_t)i);
     }
-    for (const auto& c : creatures) {
-        if (!c.alive) continue;
-        // Integer cell address
-        int cx = (int)(c.pos.x / spatialHash.cellSize);
-        int cz = (int)(c.pos.z / spatialHash.cellSize);
-        spatialHash.cells[spatialHash.key(cx, cz)].push_back(c.id);
+
+    plantHash.clear();
+    for (size_t i = 0; i < plants.size(); i++) {
+        if (!plants[i].alive) continue;
+        plantHash.add(plants[i].pos.x, plants[i].pos.z, (uint32_t)i);
     }
 }
 
-// Return all creature IDs within `radius` metres of `center`.
+// Return all creature indices within `radius` metres of `center`.
 // Checks every grid cell that overlaps the query circle (a square ring of cells),
 // then filters by actual Euclidean distance to avoid returning corners of the
 // bounding square.
-std::vector<EntityID> World::queryRadius(const Vec3& center, float radius) const {
-    std::vector<EntityID> result;
-    // Number of cells to check in each direction (add 1 for safety)
-    int r = (int)std::ceil(radius / spatialHash.cellSize) + 1;
-    int cx0 = (int)(center.x / spatialHash.cellSize);
-    int cz0 = (int)(center.z / spatialHash.cellSize);
+std::vector<uint32_t> World::queryRadius(const Vec3& center, float radius) const {
+    std::vector<uint32_t> result;
+    float radius2 = radius * radius;
+    int r = (int)std::ceil(radius / spatialHash.cellSize);
+    int cx0 = (int)std::floor(center.x / spatialHash.cellSize) + SpatialHash::GRID_OFFSET;
+    int cz0 = (int)std::floor(center.z / spatialHash.cellSize) + SpatialHash::GRID_OFFSET;
+
     for (int dz = -r; dz <= r; dz++) {
+        int cz = cz0 + dz;
+        if (cz < 0 || cz >= SpatialHash::GRID_SIZE) continue;
         for (int dx = -r; dx <= r; dx++) {
-            auto it = spatialHash.cells.find(spatialHash.key(cx0+dx, cz0+dz));
-            if (it == spatialHash.cells.end()) continue;
-            for (EntityID id : it->second) {
-                auto ii = idToIndex.find(id);
-                if (ii == idToIndex.end()) continue;
-                const Creature& c2 = creatures[ii->second];
-                if (dist(c2.pos, center) <= radius)
-                    result.push_back(id);
+            int cx = cx0 + dx;
+            if (cx < 0 || cx >= SpatialHash::GRID_SIZE) continue;
+
+            int cellIdx = cz * SpatialHash::GRID_SIZE + cx;
+            int idx = spatialHash.head[cellIdx];
+            while (idx != -1) {
+                uint32_t cIdx = spatialHash.entityIndices[idx];
+                idx = spatialHash.next[idx];
+
+                const Creature& c2 = creatures[cIdx];
+                if ((c2.pos - center).len2() <= radius2) {
+                    result.push_back(cIdx);
+                }
             }
         }
     }

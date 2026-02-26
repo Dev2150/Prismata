@@ -24,6 +24,7 @@ enum class BehaviorState {
     Hunting,     // Chasing and biting a prey creature
     Mating,      // Gestation in progress; waiting for gestTimer to reach zero
     Healing,     // Resting to recover health
+    Socializing, // Approaching conspecifics
 };
 
 // Convenience distance function between two 3D points (XYZ Euclidean)
@@ -67,8 +68,11 @@ struct Creature {
     float    nearestPreyDist = 1e9f;
     EntityID nearestMate     = INVALID_ID;
     float    nearestMateDist = 1e9f;
+    EntityID nearestConspecific = INVALID_ID;
+    float    nearestConspecificDist = 1e9f;
     Vec3     nearestFood     {};        // Position of nearest alive plant
     float    nearestFoodDist = 1e9f;
+    int      nearestFoodIdx  = -1;      // Index of nearest alive plant
     Vec3     nearestWater    {};        // Position of nearest water tile
     float    nearestWaterDist= 1e9f;
     float    waterCacheTimer = 0.f;
@@ -90,37 +94,9 @@ struct Creature {
 
     // ── Physics / steering ────────────────────────────────────────────────────
 
-    // Steers toward a world-space target by blending current velocity toward
-    // the desired velocity. Uses a first-order lag (exponential smoothing)
-    // with a time constant of 1/8 s, so turns feel natural rather than instant.
-    // Slows down ("proportional braking") when close to the target.
-    void steerToward(const Vec3& target, float maxSpd, float dt) {
-        Vec3 dir = (target - pos);
-        dir.y = 0;                          // ignore height difference for steering
-        float d = dir.len();
-        if (d < 0.1f) return;              // already at target
-        dir = dir * (1.f / d);             // normalise
-        float spd = std::min(maxSpd, d * 5.f);  // proportional slow-down near goal
-        Vec3 desired = dir * spd;
-        // Blend current velocity toward desired: faster dt or larger factor = snappier
-        vel.x += (desired.x - vel.x) * std::min(1.f, dt * 8.f);
-        vel.z += (desired.z - vel.z) * std::min(1.f, dt * 8.f);
-        yaw    = std::atan2(vel.x, vel.z);  // update heading to match movement direction
-    }
-
-    // Steers directly away from a threat. Uses a stronger time constant (10×)
-    // than steerToward so fleeing creatures react faster than pursuing ones.
-    void steerAway(const Vec3& threat, float maxSpd, float dt) {
-        Vec3 dir = pos - threat;
-        dir.y = 0;
-        float d = dir.len();
-        if (d < 0.1f) dir = Vec3{1,0,0};  // degenerate case: pick arbitrary direction
-        else dir = dir * (1.f / d);
-        Vec3 desired = dir * maxSpd;
-        vel.x += (desired.x - vel.x) * std::min(1.f, dt * 10.f);
-        vel.z += (desired.z - vel.z) * std::min(1.f, dt * 10.f);
-        yaw    = std::atan2(vel.x, vel.z);
-    }
+    void steerToward(const Vec3& target, float maxSpd, float dt);
+    void steerAway(const Vec3& threat, float maxSpd, float dt);
+    void wander(float spd, float dt);
 
     // ── Energy model ──────────────────────────────────────────────────────────
     // Three-term energy cost per frame:

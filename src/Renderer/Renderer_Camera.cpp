@@ -32,8 +32,7 @@ void Renderer::tickCamera(float dt, const World& world) {
         // feels like "grabbing onto" the creature rather than snapping to a preset.
         if (!hasPossessOffset) {
             Vec3 creatureNormal = g_planet_surface.normalAt(creature.pos);
-            Vec3 forward = {std::sin(creature.yaw), 0.f, std::cos(creature.yaw)};
-            forward = g_planet_surface.projectToTangent(creature.pos, forward).normalised();
+            Vec3 forward = g_planet_surface.facingDir(creature.pos, creature.yaw);
 
             // A little bit above and slightly behind
             Vec3 idealOffset = creatureNormal * 20000.0f - forward * 0.0f;

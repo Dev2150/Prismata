@@ -118,31 +118,40 @@ struct PlanetSurface {
         Vec3 n   = normalAt(from);
         Vec3 arb = (std::abs(n.y) < 0.9f)
                  ? Vec3{0.f, 1.f, 0.f}
-                 : Vec3{1.f, 0.f, 0.f};
+        : Vec3{1.f, 0.f, 0.f};
 
-        Vec3 t1 = {n.y*arb.z - n.z*arb.y,
+        Vec3 east = {n.y*arb.z - n.z*arb.y,
                    n.z*arb.x - n.x*arb.z,
                    n.x*arb.y - n.y*arb.x};
-        t1 = t1.normalised();
-        Vec3 t2 = {n.y*t1.z - n.z*t1.y,
-                   n.z*t1.x - n.x*t1.z,
-                   n.x*t1.y - n.y*t1.x};
+        east = east.normalised();
+        Vec3 north = {n.y*east.z - n.z*east.y,
+                   n.z*east.x - n.x*east.z,
+                   n.x*east.y - n.y*east.x};
 
-        const float step  = 10.f;
+        // Adaptive step size to prevent millions of iterations on large vision ranges
+        const float step  = std::max(50.f, searchRadius / 16.f);
         int         steps = (int)(searchRadius / step) + 1;
         float       bestD = 1e9f;
         bool        found = false;
 
         for (int dz = -steps; dz <= steps; ++dz) {
             for (int dx = -steps; dx <= steps; ++dx) {
-                Vec3 cand = from + t1 * (dx * step) + t2 * (dz * step);
-                cand      = snapToSurface(cand);
-                if (isOcean(cand)) {
-                    float d = (cand - from).len();
-                    if (d < bestD && d < searchRadius) {
-                        bestD  = d;
-                        outPos = cand;
-                        found  = true;
+                float distSq = (dx*step)*(dx*step) + (dz*step)*(dz*step);
+                if (distSq > searchRadius*searchRadius) continue;
+
+                Vec3 cand = from + east * (dx * step) + north * (dz * step);
+                Vec3 dir = (cand - center).normalised();
+
+                // Fast check first (2 octaves instead of 8)
+                if (PlanetNoise::isOceanFast(dir.x, dir.y, dir.z)) {
+                    cand = snapToSurface(cand);
+                    if (isOcean(cand)) {
+                        float d = (cand - from).len();
+                        if (d < bestD) {
+                            bestD  = d;
+                            outPos = cand;
+                            found  = true;
+                        }
                     }
                 }
             }
@@ -151,6 +160,28 @@ struct PlanetSurface {
     }
 
     // ── Movement helpers ──────────────────────────────────────────────────────
+
+    void localBasis(Vec3 worldPos, Vec3& outEast, Vec3& outNorth) const {
+        Vec3 n   = normalAt(worldPos);
+        Vec3 arb = (std::abs(n.y) < 0.9f)
+                 ? Vec3{0.f, 1.f, 0.f}
+        : Vec3{1.f, 0.f, 0.f};
+
+        outEast = {n.y*arb.z - n.z*arb.y,
+                   n.z*arb.x - n.x*arb.z,
+                   n.x*arb.y - n.y*arb.x};
+        outEast = outEast.normalised();
+        outNorth = {n.y*outEast.z - n.z*outEast.y,
+                    n.z*outEast.x - n.x*outEast.z,
+                    n.x*outEast.y - n.y*outEast.x};
+        outNorth = outNorth.normalised();
+    }
+
+    Vec3 facingDir(Vec3 worldPos, float yaw) const {
+        Vec3 east, north;
+        localBasis(worldPos, east, north);
+        return east * std::sin(yaw) + north * std::cos(yaw);
+    }
 
     // Project a velocity vector onto the tangent plane at `worldPos`.
     // Use this every physics tick so creatures don't drift off the sphere.

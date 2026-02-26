@@ -116,8 +116,7 @@ void Renderer::updateFrameConstants(const World& world, float aspect) {
             fc->fowData[0] = pc.pos.x; fc->fowData[1] = pc.pos.y;
             fc->fowData[2] = pc.pos.z; fc->fowData[3] = pc.genome.visionRange();
 
-            Vec3 facing = {std::sin(pc.yaw), 0.f, std::cos(pc.yaw)};
-            facing = g_planet_surface.projectToTangent(pc.pos, facing).normalised();
+            Vec3 facing = g_planet_surface.facingDir(pc.pos, pc.yaw);
             fc->fowFacing[0] = facing.x;
             fc->fowFacing[1] = facing.y;
             fc->fowFacing[2] = facing.z;

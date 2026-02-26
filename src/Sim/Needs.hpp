@@ -77,7 +77,7 @@ struct Needs {
             if (i == (int)Drive::Fear || i == (int)Drive::Health || i == (int)Drive::Hunger) continue;
             urgency[i] = std::min(1.f, urgency[i] + craveRate[i] * dt);
         }
-        float damage_potential = 0.02 * dt;
+        float damage_potential = 0.02f * dt;
         if (isCritical(Drive::Hunger))
             urgency[(int)Drive::Health] += damage_potential;
         if (isCritical(Drive::Thirst))

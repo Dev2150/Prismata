@@ -209,7 +209,7 @@ void SimUI::drawTerrainHoverTooltip(const World& world) {
             ImGui::Text("Age: %.1f / %.1f", c.age, c.lifespan);
 
             const char* bhNames[] = {"Idle","SeekFood","SeekWater","Sleep",
-                                     "SeekMate","Flee","Hunt","Mating","Healing"};
+                                     "SeekMate","Flee","Hunt","Mating","Healing","Socializing"};
             ImGui::Text("Action: %s", bhNames[(int)c.behavior]);
         } else {
             ImGui::Text("Creature died.");
@@ -431,6 +431,7 @@ void SimUI::drawPopStats(const World& world, const DataRecorder& rec) {
 
     if (n > 1 && ImPlot::BeginPlot("Population", ImVec2(-1, 180))) {
         ImPlot::SetupAxes("Time (s)", "Count");
+        ImPlot::SetupAxisScale(ImAxis_Y1, ImPlotScale_Log10);
         ImPlot::PlotLine("Total",     rec.t_buf.data(), rec.total_buf.data(), n);
         ImPlot::PlotLine("Herbivore", rec.t_buf.data(), rec.herb_buf.data(),  n);
         ImPlot::PlotLine("Carnivore", rec.t_buf.data(), rec.carn_buf.data(),  n);
@@ -584,7 +585,7 @@ void SimUI::drawEntityInspector(const World& world) {
 
             // Behaviour
             const char* bhNames[] = {"Idle","SeekFood","SeekWater","Sleep",
-                                     "SeekMate","Flee","Hunt","Mating","Healing"};
+                                     "SeekMate","Flee","Hunt","Mating","Healing","Socializing"};
             ImGui::Text("Behavior: %s", bhNames[(int)c.behavior]);
 
             ImGui::Separator();

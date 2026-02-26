@@ -197,6 +197,7 @@ bool World::loadFromFile(const char* path) {
         c.nearestPrey     = INVALID_ID; c.nearestPreyDist = 1e9f;
         c.nearestMate     = INVALID_ID; c.nearestMateDist = 1e9f;
         c.nearestFoodDist = 1e9f;
+        c.nearestFoodIdx  = -1;
         c.nearestWaterDist= 1e9f;
 
         idToIndex[c.id] = i;

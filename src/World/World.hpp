@@ -90,8 +90,6 @@ struct World {
         }
     }
 
-    std::vector<Vec3> cachedOceanPoints;
-
     // ── Planet-surface 3D spatial queries ─────────────────────────────────────
     float slopeAt3D(const Vec3& worldPos) const;
     Vec3  normalAt (const Vec3& worldPos) const;
@@ -152,14 +150,69 @@ private:
 
     // Simple spatial hash for creature proximity queries
     void rebuildSpatialHash();
-    std::vector<EntityID> queryRadius(const Vec3& center, float radius) const;
+    std::vector<uint32_t> queryRadius(const Vec3& center, float radius) const;
 
     struct SpatialHash {
         float cellSize = 500.f;
-        std::unordered_map<uint64_t, std::vector<EntityID>> cells;
-        uint64_t key(int cx, int cz) const {
-            return (static_cast<uint64_t>(cx + 30000) << 32)
-                 |  static_cast<uint64_t>(cz + 30000);
+        static constexpr int GRID_SIZE = 512;
+        static constexpr int GRID_OFFSET = 256;
+
+        std::vector<int> head;
+        std::vector<int> next;
+        std::vector<uint32_t> entityIndices;
+
+        SpatialHash() {
+            head.assign(GRID_SIZE * GRID_SIZE, -1);
+        }
+
+        void clear() {
+            std::fill(head.begin(), head.end(), -1);
+            next.clear();
+            entityIndices.clear();
+        }
+
+        void add(float x, float z, uint32_t creatureIdx) {
+            int cx = (int)std::floor(x / cellSize) + GRID_OFFSET;
+            int cz = (int)std::floor(z / cellSize) + GRID_OFFSET;
+            if (cx < 0 || cx >= GRID_SIZE || cz < 0 || cz >= GRID_SIZE) return;
+
+            int cellIdx = cz * GRID_SIZE + cx;
+            int idx = (int)entityIndices.size();
+            entityIndices.push_back(creatureIdx);
+            next.push_back(head[cellIdx]);
+            head[cellIdx] = idx;
         }
     } spatialHash;
+
+    struct PlantSpatialHash {
+        float cellSize = 500.f;
+        static constexpr int GRID_SIZE = 512;
+        static constexpr int GRID_OFFSET = 256;
+
+        std::vector<int> head;
+        std::vector<int> next;
+        std::vector<uint32_t> plantIndices;
+
+        PlantSpatialHash() {
+            head.assign(GRID_SIZE * GRID_SIZE, -1);
+        }
+
+        void clear() {
+            std::fill(head.begin(), head.end(), -1);
+            next.clear();
+            plantIndices.clear();
+        }
+
+        void add(float x, float z, uint32_t plantIdx) {
+            int cx = (int)std::floor(x / cellSize) + GRID_OFFSET;
+            int cz = (int)std::floor(z / cellSize) + GRID_OFFSET;
+            if (cx < 0 || cx >= GRID_SIZE || cz < 0 || cz >= GRID_SIZE) return;
+
+            int cellIdx = cz * GRID_SIZE + cx;
+            int idx = (int)plantIndices.size();
+            plantIndices.push_back(plantIdx);
+            next.push_back(head[cellIdx]);
+            head[cellIdx] = idx;
+        }
+    } plantHash;
 };

@@ -10,19 +10,6 @@ void World::generate(uint64_t s, int cx, int cz) {
     // Seed 3-D Perlin noise used by PlanetNoise (shared with PlanetRenderer).
     initPlanetNoise(seed);
 
-    // Pre-bake ocean positions once, because terrain never changes
-    constexpr int OCEAN_SAMPLES = 500;
-    for (int i = 0; i < OCEAN_SAMPLES; i++) {
-        // Uniform random sphere sample
-        float a = globalRNG().range(0.f, 6.2831853f);
-        float z = globalRNG().range(-1.f, 1.f);
-        float s = std::sqrt(1.f - z*z);
-        Vec3 dir = {s * std::cos(a), z, s * std::sin(a)};
-        Vec3 pos = g_planet_surface.surfacePos(dir);
-        if (g_planet_surface.isOcean(pos))
-            cachedOceanPoints.push_back(pos);
-    }
-
     // Build chunk grid for material storage (renderer still uses it for the
     // flat-world chunk mesh cache; we zero it out since planet mode doesn't
     // use flat chunk meshes for terrain).

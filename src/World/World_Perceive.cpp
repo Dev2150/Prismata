@@ -24,8 +24,9 @@ void World::perceive(Creature& c) {
     c.nearestPredator  = INVALID_ID; c.nearestPredDist = 1e9f;
     c.nearestPrey      = INVALID_ID; c.nearestPreyDist = 1e9f;
     c.nearestMate      = INVALID_ID; c.nearestMateDist = 1e9f;
+    c.nearestConspecific = INVALID_ID; c.nearestConspecificDist = 1e9f;
     c.nearestFoodDist  = 1e9f;
-    c.nearestWaterDist = 1e9f;
+    c.nearestFoodIdx   = -1;
 
     // Build the creature's local facing vector.
     // yaw is measured relative to the planet's XZ plane (atan2 of velocity).
@@ -37,72 +38,114 @@ void World::perceive(Creature& c) {
     {
         ZoneScopedN("perceive_creatures");
         auto nearby = queryRadius(c.pos, range);
-        for (EntityID oid : nearby) {
-            if (oid == c.id) continue;   // skip self
-            auto it = idToIndex.find(oid);
-            if (it == idToIndex.end()) continue;
-            const Creature& o = creatures[it->second];
+        float nearestPredDist2 = 1e18f;
+        float nearestPreyDist2 = 1e18f;
+        float nearestMateDist2 = 1e18f;
+        float nearestConspecificDist2 = 1e18f;
+
+        float cosHalfFov = std::cos(fovRad * 0.5f);
+        float cosHalfFov2 = cosHalfFov * cosHalfFov;
+
+        for (uint32_t oIdx : nearby) {
+            const Creature& o = creatures[oIdx];
+            if (o.id == c.id) continue;   // skip self
             if (!o.alive) continue;
+
+            Vec3 toO = o.pos - c.pos;
+            float d2 = toO.len2();
 
             // FOV cone check: project the direction to the other creature onto the
             // facing vector. If the cosine is below cos(halfFOV), the target is outside
             // the cone and is treated as invisible.
-            Vec3 toO = o.pos - c.pos;
-            float d = toO.len();
-            if (d > 0.1f) {
-                // FOV cone check in 3-D
-                float cosA = toO.normalised().dot(facing);
-                if (cosA < std::cos(fovRad * 0.5f)) continue;   // outside FOV cone
+            if (d2 > 0.01f) {
+                float dotA = toO.dot(facing);
+                if (cosHalfFov >= 0.f) {
+                    if (dotA < 0.f || dotA * dotA < d2 * cosHalfFov2) continue;
+                } else {
+                    if (dotA < 0.f && dotA * dotA > d2 * cosHalfFov2) continue;
+                }
             }
 
-            // Determine the ecological relationship between c and o
-            bool oIsPredator = o.isCarnivore() && c.isHerbivore();   // o hunts c
-            bool oIsPrey     = c.isCarnivore() && o.isHerbivore();   // c can hunt o
-            // A potential mate must be the same species AND have a high libido drive
-            bool oIsMate     = (o.speciesID == c.speciesID)
-                            && (o.needs.urgency[(int)Drive::Libido] > 0.5f);
+            bool oIsPredator = o.genome.carnEfficiency() > 0.5f && o.genome.bodySize() > c.genome.bodySize() * 1.1f;
+            bool oIsPrey     = c.genome.carnEfficiency() > 0.5f && c.genome.bodySize() > o.genome.bodySize() * 1.1f;
+            bool oIsMate     = (o.speciesID == c.speciesID) && (o.needs.urgency[(int)Drive::Libido] > 0.5f);
+            bool oIsConspecific = (o.speciesID == c.speciesID);
 
-            if (oIsPredator && d < c.nearestPredDist) {
-                c.nearestPredDist = d; c.nearestPredator = oid;
+            if (oIsPredator && d2 < nearestPredDist2) {
+                nearestPredDist2 = d2; c.nearestPredator = o.id;
             }
-            if (oIsPrey && d < c.nearestPreyDist) {
-                c.nearestPreyDist = d; c.nearestPrey = oid;
+            if (oIsPrey && d2 < nearestPreyDist2) {
+                nearestPreyDist2 = d2; c.nearestPrey = o.id;
             }
-            if (oIsMate && d < c.nearestMateDist) {
-                c.nearestMateDist = d; c.nearestMate = oid;
+            if (oIsMate && d2 < nearestMateDist2) {
+                nearestMateDist2 = d2; c.nearestMate = o.id;
+            }
+            if (oIsConspecific && d2 < nearestConspecificDist2) {
+                nearestConspecificDist2 = d2; c.nearestConspecific = o.id;
             }
         }
+        if (c.nearestPredator != INVALID_ID) c.nearestPredDist = std::sqrt(nearestPredDist2);
+        if (c.nearestPrey != INVALID_ID) c.nearestPreyDist = std::sqrt(nearestPreyDist2);
+        if (c.nearestMate != INVALID_ID) c.nearestMateDist = std::sqrt(nearestMateDist2);
+        if (c.nearestConspecific != INVALID_ID) c.nearestConspecificDist = std::sqrt(nearestConspecificDist2);
     }
 
     {
         ZoneScopedN("perceive_plants");
-        // Scan all plants: O(plants) but plants are generally sparse relative to
-        // vision range so this is fast in practice. A spatial hash for plants would
-        // help at very high plant counts.
-        for (const auto& p : plants) {
-            if (!p.alive) continue;
-            float d = dist(c.pos, p.pos);
-            if (d < range && d < c.nearestFoodDist) {
-                c.nearestFoodDist = d;
-                c.nearestFood     = p.pos;
+        float bestDist2 = range * range;
+        bool found = false;
+
+        int r = (int)std::ceil(range / plantHash.cellSize);
+        int cx0 = (int)std::floor(c.pos.x / plantHash.cellSize) + PlantSpatialHash::GRID_OFFSET;
+        int cz0 = (int)std::floor(c.pos.z / plantHash.cellSize) + PlantSpatialHash::GRID_OFFSET;
+
+        for (int dz = -r; dz <= r; dz++) {
+            int cz = cz0 + dz;
+            if (cz < 0 || cz >= PlantSpatialHash::GRID_SIZE) continue;
+            for (int dx = -r; dx <= r; dx++) {
+                int cx = cx0 + dx;
+                if (cx < 0 || cx >= PlantSpatialHash::GRID_SIZE) continue;
+
+                int cellIdx = cz * PlantSpatialHash::GRID_SIZE + cx;
+                int idx = plantHash.head[cellIdx];
+                while (idx != -1) {
+                    uint32_t pIdx = plantHash.plantIndices[idx];
+                    idx = plantHash.next[idx];
+
+                    const Plant& p = plants[pIdx];
+                    float d2 = (c.pos - p.pos).len2();
+                    if (d2 < bestDist2) {
+                        bestDist2 = d2;
+                        c.nearestFood     = p.pos;
+                        c.nearestFoodIdx = pIdx;
+                        found = true;
+                    }
+                }
             }
+        }
+
+        if (found) {
+            c.nearestFoodDist = std::sqrt(bestDist2);
         }
     }
 
     {
         ZoneScopedN("perceive_water");
-        // Water search: only run if no water has been cached within range yet
+        // Water search: only run if the cache timer has expired
         c.waterCacheTimer -= 1.f / 60.f;
-        if (c.nearestWaterDist > range || c.waterCacheTimer <= 0.f) {
-            float bestDist = range;
-            for (const Vec3& oceanPt : cachedOceanPoints) {
-                float dist = (oceanPt - c.pos).len();
-                if (dist < bestDist) {
-                    bestDist          = dist;
-                    c.nearestWater = oceanPt;
-                    c.nearestWaterDist = dist;
+
+        if (c.waterCacheTimer <= 0.f) {
+            c.waterCacheTimer = 2.0f;
+            Vec3 waterPos;
+            if (g_planet_surface.findOcean(c.pos, range, waterPos)) {
+                c.nearestWater = waterPos;
+                c.nearestWaterDist = (waterPos - c.pos).len();
+            } else {
+                c.nearestWaterDist = 1e9f;
                 }
-            }
+        } else if (c.nearestWaterDist < 1e9f) {
+            // We already have a cached water position, just update the distance to it
+            c.nearestWaterDist = (c.nearestWater - c.pos).len();
         }
     }
 

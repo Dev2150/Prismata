@@ -74,10 +74,10 @@ void SimUI::tickNotifications(float dt, const World& world) {
     for (auto& n : notifications) n.age += dt;
 
     // ── Built-in trigger: low population ──────────────────────────────────────
-    {
-        int pop = 0;
-        for (const auto& c : world.creatures) if (c.alive) pop++;
+    int pop = 0;
+    for (const auto& c : world.creatures) if (c.alive) pop++;
 
+    {
         bool nowLow = 0 < pop && pop < 100;
 
         if (nowLow && !lowPopNotifFired) {

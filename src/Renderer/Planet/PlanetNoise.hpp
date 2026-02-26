@@ -149,8 +149,7 @@ inline float continentMask(float x, float y, float z, float freq = 0.4f) {
 inline float sampleHeight(float dx, float dy, float dz,
                           float heightScale = 100.f,
                           float seaFloor   = 0.3f,
-                          uint64_t /*seed*/ = 0)
-{
+                          uint64_t /*seed*/ = 0) {
     // Low-frequency continent mask [0,1]: 0=deep ocean, 1=high land
     float continent = continentMask(dx, dy, dz, 0.35f);
 
@@ -184,10 +183,10 @@ inline float sampleHeight(float dx, float dy, float dz,
     return h * heightScale;
 }
 
-} // namespace PlanetNoise
-
 inline bool isOceanFast(float dx, float dy, float dz) {
     float raw = PlanetNoise::fbm(dx, dy, dz, 2, 0.35f, 0.5f, 2.f);  // 2 octaves, not 4
     raw = (raw - (-0.1f)) / 0.4f;
     return raw < 0.1f;   // below coastline threshold
 }
+
+} // namespace PlanetNoise

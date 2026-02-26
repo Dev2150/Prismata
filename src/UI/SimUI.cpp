@@ -589,13 +589,47 @@ void SimUI::drawEntityInspector(const World& world) {
 
             ImGui::Separator();
             ImGui::Text("Needs:");
-            for (int i = 0; i < DRIVE_COUNT; i++) {
-                float lvl = c.needs.urgency[i];
-                float des = c.needs.desireMult[i];
-                ImVec4 col = {0.5f * (1 + lvl), 0.5f * (1 - lvl), 0.5f * (1 - lvl), 1.f};
-                ImGui::TextColored(col, "  %-10s Want: %.2f", driveName((Drive)i), lvl * des);
-                ImGui::SameLine();
-                ImGui::ProgressBar(lvl, ImVec2(120, 0));
+            if (ImGui::BeginTable("NeedsTable", 3, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Drive", ImGuiTableColumnFlags_WidthFixed, 60.f);
+                ImGui::TableSetupColumn("Want", ImGuiTableColumnFlags_None);
+                ImGui::TableSetupColumn("Need", ImGuiTableColumnFlags_None);
+                ImGui::TableHeadersRow();
+
+                for (int i = 0; i < DRIVE_COUNT; i++) {
+                    ImGui::TableNextRow();
+                    float lvl = c.needs.urgency[i];
+                    float des = c.needs.desireMult[i];
+                    float want = lvl * des;
+
+                    // Smooth transition from Green (0%)  to Yellow (33%) to Red (66%) to Black (100%)
+                    constexpr ImVec4 col_green  = {0.1f, 1.0f, 0.1f, 1.0f};
+                    constexpr ImVec4 col_yellow = {1.0f, 1.0f, 0.1f, 1.0f};
+                    constexpr ImVec4 col_red    = {1.0f, 0.1f, 0.1f, 1.0f};
+                    constexpr ImVec4 col_black  = {0.1f, 0.1f, 0.1f, 1.0f};
+
+                    ImVec4 col;
+                    if (lvl < 0.33f) { col = lerp_im_vec4(col_green, col_yellow, lvl / 0.33f); }
+                    else if (lvl < 0.66f) { col = lerp_im_vec4(col_yellow, col_red, (lvl - 0.33f) / 0.33f); }
+                    else { col = lerp_im_vec4(col_red, col_black, (lvl - 0.66f) / 0.34f); }
+
+                    ImGui::TableSetColumnIndex(0);
+                    ImGui::Text("%s", driveName((Drive)i));
+
+                    ImGui::TableSetColumnIndex(1);
+                    char wantBuf[32];
+                    std::snprintf(wantBuf, sizeof(wantBuf), "%.2f", want);
+                    ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImVec4(0.2f, 0.6f, 1.0f, 1.f));
+                    ImGui::ProgressBar(std::min(want / 5.0f, 1.0f), ImVec2(-FLT_MIN, 0), wantBuf);
+                    ImGui::PopStyleColor();
+
+                    ImGui::TableSetColumnIndex(2);
+                    char needBuf[32];
+                    std::snprintf(needBuf, sizeof(needBuf), "%d%%", (int)(lvl * 100));
+                    ImGui::PushStyleColor(ImGuiCol_PlotHistogram, col);
+                    ImGui::ProgressBar(lvl, ImVec2(-FLT_MIN, 0), needBuf);
+                    ImGui::PopStyleColor();
+                }
+                ImGui::EndTable();
             }
 
             ImGui::Separator();

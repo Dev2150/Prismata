@@ -2,6 +2,8 @@
 #include <cmath>
 #include <algorithm>
 
+#include "imgui.hpp"
+
 // ── Vec3 ──────────────────────────────────────────────────────────────────────
 // 3-component float vector (position, velocity, direction).
 // Y is the vertical (up) axis; X and Z are horizontal.
@@ -194,3 +196,12 @@ inline Float3 normalise3(float x, float y, float z) {
     if (l < 1e-6f) return {0,1,0};
     return {x/l, y/l, z/l};
 }
+
+inline auto lerp_im_vec4 = [](const ImVec4& a, const ImVec4& b, float t) -> ImVec4 {
+    return ImVec4(
+        a.x + (b.x - a.x) * t,
+        a.y + (b.y - a.y) * t,
+        a.z + (b.z - a.z) * t,
+        a.w + (b.w - a.w) * t
+    );
+};
